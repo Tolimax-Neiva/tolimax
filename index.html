@@ -37,7 +37,8 @@ select,input,button{font-family:inherit;font-size:15px}
 .combo .opt{padding:11px 13px;cursor:pointer;border-bottom:1px solid #f2e9db}
 .combo .opt:hover{background:var(--cream)}
 .combo .opt b{display:block;font-size:14px;color:var(--ink)}
-.combo .opt small{color:var(--muted);font-size:11.5px}
+.combo .opt small{color:var(--muted);font-size:11.5px;display:block;margin-top:2px}
+.combo .opt small.dir{color:var(--cacao-600);font-weight:600}
 .tag{font-size:10px;font-weight:800;padding:2px 7px;border-radius:6px;text-transform:uppercase}
 .tag.COMERCIAL{background:#EAF3EA;color:#2E7D46}.tag.MAYORISTA{background:#EAE6F5;color:#5B47B0}.tag.DISTRIBUIDOR{background:#F5EDDD;color:#9a6a1f}
 .line{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px;position:relative}
@@ -208,8 +209,8 @@ function volver(){$('#screen2').classList.add('hidden');$('#screen1').classList.
 function tierOf(c){const t=(c.tipo||'COMERCIAL').toUpperCase();return (t==='MAYORISTA'||t==='DISTRIBUIDOR')?t:'COMERCIAL'}
 function setupCombo(){const inp=$('#clienteInput'),list=$('#clienteList');
   const render=q=>{q=(q||'').trim().toLowerCase();let a=DB.clientes;
-    if(q)a=a.filter(c=>c.nombre.toLowerCase().includes(q)||c.cedula.includes(q));a=a.slice(0,30);
-    list.innerHTML=a.map(c=>`<div class="opt" data-c="${c.cedula}"><b>${c.nombre}</b><small>CC ${c.cedula} · ${c.city||''} <span class="tag ${tierOf(c)}">${c.tipo}</span></small></div>`).join('')||'<div class="opt"><small>Sin resultados</small></div>';
+    if(q)a=a.filter(c=>c.nombre.toLowerCase().includes(q)||c.cedula.includes(q)||(c.dir||'').toLowerCase().includes(q));a=a.slice(0,30);
+    list.innerHTML=a.map(c=>`<div class="opt" data-c="${c.cedula}"><b>${c.nombre}</b><small class="dir">📍 ${c.dir||'Sin dirección'}${c.city?' · '+c.city:''}</small><small>CC ${c.cedula} <span class="tag ${tierOf(c)}">${c.tipo}</span></small></div>`).join('')||'<div class="opt"><small>Sin resultados</small></div>';
     list.classList.add('open');list.querySelectorAll('.opt[data-c]').forEach(o=>o.onclick=()=>selCliente(o.dataset.c));};
   inp.addEventListener('focus',()=>render(inp.value));inp.addEventListener('input',()=>render(inp.value));
   document.addEventListener('click',e=>{if(!$('#clienteCombo').contains(e.target))list.classList.remove('open')});}
