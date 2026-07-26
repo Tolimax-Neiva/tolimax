@@ -87,16 +87,24 @@ body.ordering #bgvid,body.ordering #bgvid-ov{opacity:0;pointer-events:none}
 #intro .p{position:absolute;bottom:-16px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#F5D89A,#C88A2E);
   box-shadow:0 0 8px rgba(224,176,103,.7);opacity:0;animation:rise linear infinite}
 @keyframes rise{0%{transform:translateY(0) scale(1);opacity:0}12%{opacity:.9}100%{transform:translateY(-108vh) scale(.4);opacity:0}}
-#intro .logoCard{position:relative;overflow:hidden;background:linear-gradient(145deg,#fff,#F7F0E4);border-radius:22px;padding:24px 32px;
-  box-shadow:0 26px 70px rgba(0,0,0,.6);z-index:2;transform:translateY(-140vh) rotate(-8deg);
-  animation:dropIn 1.15s cubic-bezier(.2,.85,.25,1.05) .25s forwards}
-#intro .logoCard img{height:72px;display:block}
-#intro .logoCard::after{content:"";position:absolute;top:0;left:-60%;width:45%;height:100%;transform:skewX(-20deg);
-  background:linear-gradient(100deg,transparent,rgba(255,255,255,.85),transparent);animation:shine 3.4s ease-in-out 1.6s infinite}
-@keyframes shine{0%{left:-60%}55%{left:135%}100%{left:135%}}
-#intro.go .logoCard img{animation:breathe 1.3s ease infinite}
-@keyframes dropIn{0%{transform:translateY(-140vh) rotate(-8deg)}68%{transform:translateY(14px) rotate(2deg)}84%{transform:translateY(-6px)}100%{transform:translateY(0) rotate(0)}}
-@keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+/* logo "TOLIMAX" fundido en chocolate */
+#intro .choco{position:relative;z-index:2;font-family:'Arial Black',Impact,'Segoe UI',sans-serif;font-weight:900;
+  font-size:clamp(46px,15vw,108px);letter-spacing:2px;line-height:1;color:transparent;
+  -webkit-text-stroke:1.5px rgba(224,176,103,.55);text-stroke:1.5px rgba(224,176,103,.55);
+  background:linear-gradient(180deg,#9a6438 0%,#5A3420 38%,#2e1608 74%,#1a0c05 100%);-webkit-background-clip:text;background-clip:text;
+  filter:drop-shadow(0 8px 16px rgba(0,0,0,.6)) drop-shadow(0 1px 0 rgba(240,200,120,.5));
+  clip-path:inset(0 0 100% 0);transition:transform .5s ease;animation:pour 1.5s cubic-bezier(.3,.7,.25,1) .5s forwards}
+#intro.go .choco{transform:scale(1.05)}
+@keyframes pour{0%{clip-path:inset(0 0 100% 0)}100%{clip-path:inset(0 0 -10% 0)}}
+/* brillo húmedo superior (se revela con el chocolate) */
+#intro .choco::before{content:attr(data-text);position:absolute;inset:0;z-index:1;color:transparent;-webkit-text-stroke:0;text-stroke:0;
+  background:linear-gradient(180deg,rgba(255,255,255,.6),rgba(255,255,255,0) 42%);-webkit-background-clip:text;background-clip:text;
+  clip-path:inset(0 0 100% 0);animation:pour 1.5s cubic-bezier(.3,.7,.25,1) .5s forwards;pointer-events:none}
+/* reflejo dorado que barre las letras */
+#intro .choco::after{content:attr(data-text);position:absolute;inset:0;z-index:2;color:transparent;-webkit-text-stroke:0;text-stroke:0;
+  background:linear-gradient(100deg,transparent 42%,rgba(245,215,150,.95) 50%,transparent 58%);background-size:250% 100%;background-position:160% 0;
+  -webkit-background-clip:text;background-clip:text;opacity:0;animation:goldSweep 2.8s ease 2s infinite;pointer-events:none}
+@keyframes goldSweep{0%{background-position:160% 0;opacity:0}18%{opacity:1}60%{background-position:-90% 0;opacity:1}100%{background-position:-90% 0;opacity:0}}
 #intro .lema{color:#F0C877;font-size:22px;font-style:italic;letter-spacing:1px;margin-top:22px;opacity:0;z-index:2;text-shadow:0 2px 14px rgba(0,0,0,.65);animation:fadeUp .8s ease 1.25s forwards}
 #intro .brandName{color:#fff;font-size:12px;letter-spacing:6px;text-transform:uppercase;margin-top:8px;opacity:0;z-index:2;text-shadow:0 2px 10px rgba(0,0,0,.65);animation:fadeUp .8s ease 1.5s forwards}
 #intro .hint{position:absolute;bottom:46px;color:#f0d6ad;font-size:12px;letter-spacing:2px;text-transform:uppercase;opacity:0;z-index:2;text-shadow:0 2px 10px rgba(0,0,0,.7);animation:fadeUp .8s ease 1.9s forwards, pulse 2s ease 2.7s infinite}
@@ -116,7 +124,7 @@ body.ordering #bgvid,body.ordering #bgvid-ov{opacity:0;pointer-events:none}
 <div id="bgvid-ov"></div>
 <div id="intro" onclick="enterApp()">
   <div class="pcont" id="pcont"></div>
-  <div class="logoCard"><img src="logo.jpeg" alt="TOLIMAX"></div>
+  <div class="choco" data-text="TOLIMAX">TOLIMAX</div>
   <div class="lema">El sabor natural</div>
   <div class="brandName">Pedidos de producción</div>
   <div class="hint">Toca para comenzar</div>
