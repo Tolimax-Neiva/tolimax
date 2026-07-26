@@ -20,9 +20,19 @@ var IDS = {
   solicitantes:  '11ap5Kn_w-bA5r6IqiGkkYDqnL2XAIUepLitSKW4bcIY',
   despachadores: '1moPr-ABs-6dgLOs-SXGUoA0bq7Cz1oAxpuc0Vhv1Dps'
 };
-var PEDIDOS_ID = '';   // se llena solo la primera vez (no tocar)
+var PEDIDOS_ID = '1xHs5wK4XQp_2Cwly3D4HWvz53xDj_DpRsOBv_6LRQE0';   // hoja de pedidos fija
+var FOLDER_ID = '12RiBuZIlOOCyufUnqu9cuF_krFgRqpXU';               // carpeta "TOLIMAX - Aplicativo"
 var FOLDER_FACTURAS = 'TOLIMAX - Facturas';
 var DATA_URL = 'https://tolimax-neiva.github.io/tolimax/data.json';
+
+/* Ejecuta UNA vez: mueve la hoja de pedidos a la carpeta y borra la duplicada vacía. */
+function organizar() {
+  var folder = DriveApp.getFolderById(FOLDER_ID);
+  DriveApp.getFileById(PEDIDOS_ID).moveTo(folder);
+  try { DriveApp.getFileById('1LQYKHTF2AsnBZy0Ih_eso2n1O8DJOyVJCvfYY-J1nvg').setTrashed(true); } catch (e) {}
+  return 'listo';
+}
+function ahora() { return Utilities.formatDate(new Date(), 'America/Bogota', 'yyyy-MM-dd HH:mm:ss'); }
 
 function doGet(e) {
   var res = (e && e.parameter && e.parameter.resource) || 'pedidos';
@@ -49,7 +59,7 @@ function guardarPedido(order) {
   order.items.forEach(function (it) {
     sh.appendRow([order.folio, order.fecha, order.solicitante, order.despachador,
       order.cliente.cedula, order.cliente.nombre, order.cliente.tier, order.cliente.pago || '',
-      it.desc, it.qty, it.unit, it.total, order.subtotal, order.icui, order.iva, order.total, new Date()]);
+      it.desc, it.qty, it.unit, it.total, order.subtotal, order.icui, order.iva, order.total, ahora()]);
   });
   guardarFactura(order);
   return { ok: true, folio: order.folio };
