@@ -170,7 +170,7 @@ function enviarPedido(){if(!CLIENTE){toast('Selecciona un cliente');return}
   const order={folio,fecha:$('#fecha').value,creado:new Date().toISOString(),solicitante:SESSION.solicitante,despachador:SESSION.despachador,
     cliente:{...CLIENTE,tier},items,subtotal,icui,iva,total};
   const all=LS.get('tlx_orders',[]);all.push(order);LS.set('tlx_orders',all);
-  if(CFG.syncUrl){try{fetch(CFG.syncUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(order)});}catch(e){}}
+  if(CFG.syncUrl){try{fetch(CFG.syncUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(order)}).catch(()=>{});}catch(e){}}
   showConfirm(order);}
 function showConfirm(o){ // SIN precios para el despachador
   const items=o.items.map(it=>`<div class="it"><span>${it.desc}</span><b>${it.qty} und</b></div>`).join('');

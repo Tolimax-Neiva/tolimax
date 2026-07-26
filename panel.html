@@ -62,6 +62,13 @@ table.orders tbody tr{cursor:pointer}table.orders tbody tr:hover{background:var(
 .dashbar{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
 .dashbar select{padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:14px}
 .hint{font-size:12px;color:var(--muted)}
+.segL{display:inline-flex;background:var(--cream-2);border-radius:10px;padding:3px}
+.segL button{background:none;border:none;color:var(--cacao-600);font-weight:700;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:13px}
+.segL button.on{background:var(--gold);color:#2A1710}
+.chip2{display:inline-flex;align-items:center;gap:6px;background:var(--cacao-700);color:#fff;border-radius:999px;padding:5px 11px;font-size:12px;font-weight:700;cursor:pointer;margin-left:6px}
+.kpi .d{font-size:12px;font-weight:800;margin-top:2px}
+.kpi .d.up{color:var(--ok)}.kpi .d.down{color:var(--danger)}
+.chartcard h4 small{font-weight:600;color:var(--muted);font-size:11px}
 .overlay{position:fixed;inset:0;background:rgba(20,10,6,.6);display:none;align-items:flex-start;justify-content:center;padding:20px;z-index:100;overflow:auto}
 .overlay.open{display:flex}
 .modal{background:#fff;border-radius:18px;max-width:680px;width:100%;box-shadow:var(--shadow);overflow:hidden}
@@ -97,7 +104,8 @@ table.orders tbody tr{cursor:pointer}table.orders tbody tr:hover{background:var(
   <div class="seg"><button id="segList" class="on" onclick="setView('list')">📋 Pedidos</button><button id="segDash" onclick="setView('dash')">📊 Informe</button></div>
   <div class="sp"></div>
   <button class="tbtn" onclick="loadFromDrive()">☁ Cargar de Drive</button>
-  <button class="tbtn" onclick="openAddCliente()">＋ Cliente</button>
+  <button class="tbtn" onclick="openClientes()">👤 Clientes</button>
+  <button class="tbtn" onclick="openProductos()">📦 Productos</button>
   <button class="tbtn" onclick="openAddPersonas()">＋ Personas</button>
   <button class="tbtn" onclick="exportMonth()">⬇ Exportar mes</button>
   <button class="tbtn" onclick="document.getElementById('imp').click()">⬆ Importar</button>
@@ -131,13 +139,18 @@ table.orders tbody tr{cursor:pointer}table.orders tbody tr:hover{background:var(
     <div class="dashbar">
       <b style="color:var(--cacao-700)">Informe interactivo</b>
       <select id="dashMonth" onchange="renderDash()"></select>
-      <span class="hint">Haz clic en una barra de "Ventas por mes" para cambiar de mes.</span>
+      <div class="segL"><button id="mMonto" class="on" onclick="setMetric('monto')">$ Ventas</button>
+        <button id="mUnid" onclick="setMetric('unidades')">Unidades</button>
+        <button id="mPed" onclick="setMetric('pedidos')"># Pedidos</button></div>
+      <span id="filterChips"></span>
     </div>
+    <div class="hint" style="margin-bottom:12px">💡 Haz clic en cualquier barra o porción para filtrar todo el informe (mes, lista, producto, solicitante o cliente). Vuelve a hacer clic o usa "✕ Limpiar" para quitar el filtro.</div>
     <div class="dashgrid">
-      <div class="chartcard"><h4>Ventas por mes (con impuestos)</h4><canvas id="cMes"></canvas></div>
-      <div class="chartcard"><h4>Ventas por lista de precios</h4><canvas id="cTier"></canvas></div>
-      <div class="chartcard"><h4>Top productos (unidades)</h4><canvas id="cProd"></canvas></div>
-      <div class="chartcard"><h4>Ventas por solicitante</h4><canvas id="cSol"></canvas></div>
+      <div class="chartcard"><h4>Ventas por mes <small>(clic = cambiar mes)</small></h4><canvas id="cMes"></canvas></div>
+      <div class="chartcard"><h4>Por lista de precios <small>(clic = filtrar)</small></h4><canvas id="cTier"></canvas></div>
+      <div class="chartcard"><h4>Top productos <small>(clic = filtrar)</small></h4><canvas id="cProd"></canvas></div>
+      <div class="chartcard"><h4>Por solicitante <small>(clic = filtrar)</small></h4><canvas id="cSol"></canvas></div>
+      <div class="chartcard" style="grid-column:1/-1"><h4>Top 10 clientes del mes <small>(Pareto)</small></h4><canvas id="cCli" style="max-height:300px"></canvas></div>
     </div>
   </div>
 </div>
@@ -176,9 +189,12 @@ function setView(v){VIEW=v;$('#segList').classList.toggle('on',v==='list');$('#s
   $('#viewList').style.display=v==='list'?'':'none';$('#viewDash').style.display=v==='dash'?'':'none';if(v==='dash')renderDash();}
 function kpis(){const mo=monthOrders();const monto=mo.reduce((s,o)=>s+o.total,0);const cli=new Set(mo.map(o=>o.cliente.cedula)).size;
   const sub=mo.reduce((s,o)=>s+o.subtotal,0);
+  const prev=CURMONTH?monthOrders(typeof prevKey==='function'?prevKey(CURMONTH):'').reduce((s,o)=>s+o.total,0):0;
+  let deltaHTML='<div class="s">ICUI 20% + IVA 5%</div>';
+  if(prev){const d=Math.round((monto-prev)/prev*100);deltaHTML=`<div class="d ${d>=0?'up':'down'}">${d>=0?'▲':'▼'} ${Math.abs(d)}% vs mes anterior</div>`;}
   $('#kpis').innerHTML=`
    <div class="kpi"><div class="l">Pedidos del mes</div><div class="v">${mo.length}</div><div class="s">${CURMONTH?mName(CURMONTH):''}</div></div>
-   <div class="kpi"><div class="l">Total con impuestos</div><div class="v">${money(monto)}</div><div class="s">ICUI 20% + IVA 5%</div></div>
+   <div class="kpi"><div class="l">Total con impuestos</div><div class="v">${money(monto)}</div>${deltaHTML}</div>
    <div class="kpi"><div class="l">Subtotal (base)</div><div class="v">${money(sub)}</div><div class="s">sin impuestos</div></div>
    <div class="kpi"><div class="l">Clientes atendidos</div><div class="v">${cli}</div><div class="s">únicos</div></div>`;}
 function renderList(){const q=($('#q').value||'').toLowerCase().trim();let list=monthOrders();
@@ -196,26 +212,54 @@ function topProd(){const mo=monthOrders();const agg={};mo.forEach(o=>o.items.for
   $('#topProd').innerHTML=arr.map(([n,q])=>{const s=n.replace('CHOCOLATE TOLIMAX ','').replace('SAN JUANERO ','SJ ').slice(0,20);
     return `<div class="bar"><div class="name" title="${n}">${s}</div><div class="track"><div class="fill" style="width:${q/max*100}%"></div></div><div class="val">${q} und</div></div>`;}).join('')||'<div class="empty" style="padding:18px">Sin datos</div>';}
 
-/* ---- Dashboard (Power BI style) ---- */
-let charts={};
-function renderDash(){const k=$('#dashMonth').value||CURMONTH;CURMONTH=k;
+/* ---- Dashboard (Power BI style, interactivo) ---- */
+let charts={}, METRIC='monto', FILT={tier:null,prod:null,sol:null,cli:null};
+const short=n=>n.replace('CHOCOLATE TOLIMAX ','').replace('SAN JUANERO ','SJ ').slice(0,18);
+function setMetric(m){METRIC=m;['mMonto','mUnid','mPed'].forEach(id=>$('#'+id).classList.remove('on'));
+  $('#'+{monto:'mMonto',unidades:'mUnid',pedidos:'mPed'}[m]).classList.add('on');renderDash();}
+function fmtMetric(v){return METRIC==='monto'?money(v):v.toLocaleString('es-CO')+(METRIC==='unidades'?' und':' ped');}
+function passesFilt(o,exclude){return (exclude==='tier'||!FILT.tier||o.cliente.tier===FILT.tier)
+  &&(exclude==='sol'||!FILT.sol||(o.solicitante||'—')===FILT.sol)
+  &&(exclude==='cli'||!FILT.cli||o.cliente.nombre===FILT.cli)
+  &&(exclude==='prod'||!FILT.prod||o.items.some(it=>it.desc===FILT.prod));}
+function meas(orders){return METRIC==='pedidos'?orders.length:METRIC==='unidades'?orders.reduce((s,o)=>s+o.items.reduce((a,x)=>a+x.qty,0),0):orders.reduce((s,o)=>s+o.total,0);}
+function toggleFilt(k,v){FILT[k]=FILT[k]===v?null:v;renderDash();}
+function clearOne(k){FILT[k]=null;renderDash();}
+function clearFilt(){FILT={tier:null,prod:null,sol:null,cli:null};renderDash();}
+function renderChips(){const act=Object.entries(FILT).filter(([k,v])=>v);
+  $('#filterChips').innerHTML=act.map(([k,v])=>`<span class="chip2" onclick="clearOne('${k}')">${v} ✕</span>`).join('')
+    +(act.length?`<span class="chip2" style="background:var(--danger)" onclick="clearFilt()">Limpiar todo</span>`:'');}
+function prevKey(k){const[y,m]=k.split('-').map(Number);const d=new Date(y,m-2,1);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
+function renderDash(){const k=$('#dashMonth').value||CURMONTH;CURMONTH=k;renderChips();
   const months=Object.keys(ORDERS.reduce((a,o)=>{a[mk(o)]=1;return a},{})).sort();
-  const mesData=months.map(m=>monthOrders(m).reduce((s,o)=>s+o.total,0));
-  drawBar('cMes',months.map(mName),mesData,'#C88A2E',(idx)=>{CURMONTH=months[idx];$('#dashMonth').value=months[idx];renderDash();buildMonths();});
+  // Ventas por mes (respeta filtros salvo el de mes)
+  drawBar('cMes',months.map(mName),months.map(m=>meas(monthOrders(m).filter(o=>passesFilt(o)))),'#C88A2E',
+    idx=>{CURMONTH=months[idx];$('#dashMonth').value=months[idx];buildMonths();},false);
   const mo=monthOrders(k);
-  const tier={};mo.forEach(o=>tier[o.cliente.tier]=(tier[o.cliente.tier]||0)+o.total);
-  drawDoughnut('cTier',Object.keys(tier),Object.values(tier));
-  const prod={};mo.forEach(o=>o.items.forEach(it=>prod[it.desc]=(prod[it.desc]||0)+it.qty));
-  const parr=Object.entries(prod).sort((a,b)=>b[1]-a[1]).slice(0,7);
-  drawBar('cProd',parr.map(p=>p[0].replace('CHOCOLATE TOLIMAX ','').replace('SAN JUANERO ','SJ ').slice(0,16)),parr.map(p=>p[1]),'#5E3620');
-  const sol={};mo.forEach(o=>sol[o.solicitante||'—']=(sol[o.solicitante||'—']||0)+o.total);
-  drawBar('cSol',Object.keys(sol),Object.values(sol),'#2E7D46');}
-function drawBar(id,labels,data,color,onClick){if(charts[id])charts[id].destroy();
+  // Lista de precios (excluye su propio filtro para poder cambiar)
+  const tier={};mo.filter(o=>passesFilt(o,'tier')).forEach(o=>tier[o.cliente.tier]=(tier[o.cliente.tier]||0)+(METRIC==='pedidos'?1:METRIC==='unidades'?o.items.reduce((a,x)=>a+x.qty,0):o.total));
+  drawDoughnut('cTier',Object.keys(tier),Object.values(tier),lab=>toggleFilt('tier',lab));
+  // Productos
+  const prod={};mo.filter(o=>passesFilt(o,'prod')).forEach(o=>o.items.forEach(it=>prod[it.desc]=(prod[it.desc]||0)+(METRIC==='monto'?it.total:it.qty)));
+  const parr=Object.entries(prod).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  drawBar('cProd',parr.map(p=>short(p[0])),parr.map(p=>p[1]),'#5E3620',idx=>toggleFilt('prod',parr[idx][0]),true);
+  // Solicitante
+  const sol={};mo.filter(o=>passesFilt(o,'sol')).forEach(o=>sol[o.solicitante||'—']=(sol[o.solicitante||'—']||0)+(METRIC==='pedidos'?1:METRIC==='unidades'?o.items.reduce((a,x)=>a+x.qty,0):o.total));
+  const sarr=Object.entries(sol).sort((a,b)=>b[1]-a[1]);
+  drawBar('cSol',sarr.map(s=>s[0]),sarr.map(s=>s[1]),'#2E7D46',idx=>toggleFilt('sol',sarr[idx][0]),false);
+  // Top clientes
+  const cli={};mo.filter(o=>passesFilt(o,'cli')).forEach(o=>cli[o.cliente.nombre]=(cli[o.cliente.nombre]||0)+(METRIC==='pedidos'?1:METRIC==='unidades'?o.items.reduce((a,x)=>a+x.qty,0):o.total));
+  const carr=Object.entries(cli).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  drawBar('cCli',carr.map(c=>c[0].slice(0,24)),carr.map(c=>c[1]),'#B77B2B',idx=>toggleFilt('cli',carr[idx][0]),true);
+  kpis();}
+function drawBar(id,labels,data,color,onClick,horizontal){if(charts[id])charts[id].destroy();
   charts[id]=new Chart($('#'+id),{type:'bar',data:{labels,datasets:[{data,backgroundColor:color,borderRadius:6}]},
-    options:{plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>'$'+(v>=1000?(v/1000)+'k':v)}}},
+    options:{indexAxis:horizontal?'y':'x',plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+fmtMetric(c.parsed[horizontal?'x':'y'])}}},
+      scales:{[horizontal?'x':'y']:{ticks:{callback:v=>METRIC==='monto'?('$'+(v>=1000?Math.round(v/1000)+'k':v)):v}}},
       onClick:(e,el)=>{if(onClick&&el.length)onClick(el[0].index)}}});}
-function drawDoughnut(id,labels,data){if(charts[id])charts[id].destroy();
-  charts[id]=new Chart($('#'+id),{type:'doughnut',data:{labels,datasets:[{data,backgroundColor:['#2E7D46','#5B47B0','#C88A2E','#B23B2E']}]},options:{plugins:{legend:{position:'bottom'}}}});}
+function drawDoughnut(id,labels,data,onClick){if(charts[id])charts[id].destroy();
+  charts[id]=new Chart($('#'+id),{type:'doughnut',data:{labels,datasets:[{data,backgroundColor:['#2E7D46','#5B47B0','#C88A2E','#B23B2E']}]},
+    options:{plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:c=>' '+c.label+': '+fmtMetric(c.parsed)}}},onClick:(e,el)=>{if(onClick&&el.length)onClick(labels[el[0].index])}}});}
 
 /* ---- Invoice ---- */
 function invoiceHTML(o){taxes(o);const rows=o.items.map(it=>`<tr><td>${it.desc}</td><td class="r">${it.qty}</td><td class="r">${money(it.unit)}</td><td class="r">${money(it.total)}</td></tr>`).join('');
@@ -239,25 +283,77 @@ function dl(folio){const o=window._inv;const html='<!DOCTYPE html><html><head><m
 function closeModal(){$('#overlay').classList.remove('open')}
 $('#overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeModal()});
 
-/* ---- Añadir cliente (escribe a Drive) ---- */
-function openAddCliente(){$('#modal').innerHTML=`<div class="mh"><b>Añadir cliente</b><button class="x" onclick="closeModal()">×</button></div>
-  <div class="frm" style="padding:20px">
-    <div class="two"><div><label>Cédula / NIT</label><input id="f_ced"></div><div><label>Nombre y apellido</label><input id="f_nom"></div></div>
-    <div class="two"><div><label>Tipo (lista de precios)</label><select id="f_tipo"><option>COMERCIAL</option><option>DISTRIBUIDOR</option><option>MAYORISTA</option></select></div>
-      <div><label>Forma de pago</label><select id="f_pago"><option>CONTADO</option><option>CREDITO 30 DIAS</option><option>CREDITO 8 DIAS</option></select></div></div>
-    <label>Dirección</label><input id="f_dir">
-    <div class="two"><div><label>Teléfono</label><input id="f_tel"></div><div><label>Email</label><input id="f_mail"></div></div>
-    <div class="two"><div><label>Ciudad</label><input id="f_city" value="NEIVA"></div><div><label>ZipCode</label><input id="f_zip" value="410001"></div></div>
-    <div class="hint" style="margin-top:8px">Se agrega aquí y, si Drive está conectado, se guarda en la hoja TOLIMAX_clientes.</div></div>
-  <div class="mfoot"><button class="btn btn-primary" onclick="saveCliente()">Guardar cliente</button></div>`;
+/* ================= Gestión de CLIENTES ================= */
+let CLI_EDIT=null;
+function openClientes(){
+  $('#modal').innerHTML=`<div class="mh"><b>Clientes (${DBP.clientes.length})</b><button class="x" onclick="closeModal()">×</button></div>
+   <div style="padding:16px 18px">
+     <div style="display:flex;gap:8px;margin-bottom:10px"><input class="search" id="cq" placeholder="🔎 Buscar nombre o cédula…" oninput="listClientes()" style="flex:1">
+       <button class="btn btn-primary" style="flex:none;padding:0 16px" onclick="clienteForm(null)">＋ Nuevo</button></div>
+     <div id="cliList" style="max-height:52vh;overflow:auto"></div></div>`;
+  $('#overlay').classList.add('open');listClientes();}
+function listClientes(){const q=($('#cq').value||'').toLowerCase().trim();
+  let a=DBP.clientes;if(q)a=a.filter(c=>(c.nombre||'').toLowerCase().includes(q)||(c.cedula||'').includes(q));
+  const top=a.slice(0,60);
+  $('#cliList').innerHTML=top.map(c=>{const gi=DBP.clientes.indexOf(c);
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 10px;border-bottom:1px solid #f1e8da">
+      <div><b style="color:var(--cacao-700)">${c.nombre}</b><br><small style="color:var(--muted)">CC ${c.cedula} · ${c.city||''} <span class="tag ${c.tipo||c.tier||'COMERCIAL'}">${c.tipo||c.tier||''}</span></small></div>
+      <button class="tbtn" style="background:var(--cream);color:var(--cacao-600);border-color:var(--line)" onclick="clienteForm(${gi})">✎ Editar</button></div>`;}).join('')
+    ||'<div class="empty">Sin resultados</div>';
+  if(a.length>60)$('#cliList').insertAdjacentHTML('beforeend','<div class="hint" style="padding:8px">Mostrando 60 de '+a.length+'. Afina la búsqueda.</div>');}
+function clienteForm(gi){CLI_EDIT=gi;const c=gi==null?{}:DBP.clientes[gi];const isEdit=gi!=null;
+  const opt=(v,sel)=>`<option ${v===sel?'selected':''}>${v}</option>`;
+  const esc=s=>(s||'').toString().replace(/"/g,'&quot;');
+  $('#modal').innerHTML=`<div class="mh"><b>${isEdit?'Editar':'Nuevo'} cliente</b><button class="x" onclick="openClientes()">←</button></div>
+   <div class="frm" style="padding:20px">
+    <div class="two"><div><label>Cédula / NIT</label><input id="f_ced" value="${esc(c.cedula)}"></div><div><label>Nombre y apellido</label><input id="f_nom" value="${esc(c.nombre)}"></div></div>
+    <div class="two"><div><label>Tipo (lista de precios)</label><select id="f_tipo">${['COMERCIAL','DISTRIBUIDOR','MAYORISTA'].map(v=>opt(v,(c.tipo||c.tier||'COMERCIAL'))).join('')}</select></div>
+      <div><label>Forma de pago</label><select id="f_pago">${['CONTADO','CREDITO 30 DIAS','CREDITO 8 DIAS'].map(v=>opt(v,(c.pago||'CONTADO').toString().trim())).join('')}</select></div></div>
+    <label>Dirección</label><input id="f_dir" value="${esc(c.dir)}">
+    <div class="two"><div><label>Teléfono</label><input id="f_tel" value="${esc(c.tel)}"></div><div><label>Email</label><input id="f_mail" value="${esc(c.mail)}"></div></div>
+    <div class="two"><div><label>Ciudad</label><input id="f_city" value="${esc(c.city)||'NEIVA'}"></div><div><label>ZipCode</label><input id="f_zip" value="${esc(c.zip)||'410001'}"></div></div>
+    <div class="hint" style="margin-top:8px">${isEdit?'Al guardar se actualiza en TOLIMAX_clientes (busca por cédula).':'Se agrega a TOLIMAX_clientes.'}</div></div>
+   <div class="mfoot"><button class="btn btn-ghost" onclick="openClientes()">Cancelar</button><button class="btn btn-primary" onclick="saveClienteForm(${isEdit})">Guardar</button></div>`;
   $('#overlay').classList.add('open');}
-function saveCliente(){const c={cedula:$('#f_ced').value.trim(),nombre:$('#f_nom').value.trim(),tipo:$('#f_tipo').value,
-    dir:$('#f_dir').value.trim(),pago:$('#f_pago').value,tel:$('#f_tel').value.trim(),mail:$('#f_mail').value.trim(),
-    city:$('#f_city').value.trim(),zip:$('#f_zip').value.trim(),country:'Colombia'};
+function saveClienteForm(isEdit){const c={cedula:$('#f_ced').value.trim(),nombre:$('#f_nom').value.trim(),tipo:$('#f_tipo').value,
+   dir:$('#f_dir').value.trim(),pago:$('#f_pago').value,tel:$('#f_tel').value.trim(),mail:$('#f_mail').value.trim(),
+   city:$('#f_city').value.trim(),zip:$('#f_zip').value.trim(),country:'Colombia'};
   if(!c.cedula||!c.nombre){toast('Cédula y nombre son obligatorios');return}
-  DBP.clientes.push(c);
-  postDrive({action:'addCliente',cliente:c});
-  closeModal();toast('Cliente añadido ✓');}
+  if(isEdit&&CLI_EDIT!=null){c._match=DBP.clientes[CLI_EDIT].nombre;DBP.clientes[CLI_EDIT]={...DBP.clientes[CLI_EDIT],...c};postDrive({action:'updateCliente',cliente:c});}
+  else{DBP.clientes.push(c);postDrive({action:'addCliente',cliente:c});}
+  toast('Cliente guardado ✓');openClientes();}
+
+/* ================= Gestión de PRODUCTOS ================= */
+let PROD_EDIT=null;
+function openProductos(){
+  $('#modal').innerHTML=`<div class="mh"><b>Productos (${DBP.productos.length})</b><button class="x" onclick="closeModal()">×</button></div>
+   <div style="padding:16px 18px">
+     <button class="btn btn-primary" style="margin-bottom:10px" onclick="productoForm(null)">＋ Nuevo producto</button>
+     <div id="prodList" style="max-height:56vh;overflow:auto"></div></div>`;
+  $('#overlay').classList.add('open');listProductos();}
+function listProductos(){$('#prodList').innerHTML=DBP.productos.map((p,i)=>`
+   <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 10px;border-bottom:1px solid #f1e8da">
+     <div><b style="color:var(--cacao-700)">${p.desc}</b><br><small style="color:var(--muted)">${p.gramos||''}g · Base Com. ${money(p.base.COMERCIAL)} · Dist. ${money(p.base.DISTRIBUIDOR)} · May. ${money(p.base.MAYORISTA)}</small></div>
+     <button class="tbtn" style="background:var(--cream);color:var(--cacao-600);border-color:var(--line)" onclick="productoForm(${i})">✎ Editar</button></div>`).join('');}
+function productoForm(i){PROD_EDIT=i;const p=i==null?{base:{}}:DBP.productos[i];const isEdit=i!=null;const b=p.base||{};
+  const esc=s=>(s||'').toString().replace(/"/g,'&quot;');
+  $('#modal').innerHTML=`<div class="mh"><b>${isEdit?'Editar':'Nuevo'} producto</b><button class="x" onclick="openProductos()">←</button></div>
+   <div class="frm" style="padding:20px">
+    <label>Descripción</label><input id="p_desc" value="${esc(p.desc)}">
+    <label>Gramos</label><input id="p_gr" type="number" value="${p.gramos||''}">
+    <div class="hint" style="margin:8px 0">Escribe el <b>precio base</b> (subtotal) por lista. El sistema calcula solo ICUI 20% + IVA 5% + precio de venta.</div>
+    <div class="two"><div><label>Base Comercial</label><input id="p_com" type="number" value="${b.COMERCIAL||''}"></div>
+      <div><label>Base Distribuidor</label><input id="p_dis" type="number" value="${b.DISTRIBUIDOR||''}"></div></div>
+    <label>Base Mayorista</label><input id="p_may" type="number" value="${b.MAYORISTA||''}"></div>
+   <div class="mfoot"><button class="btn btn-ghost" onclick="openProductos()">Cancelar</button><button class="btn btn-primary" onclick="saveProductoForm(${isEdit})">Guardar</button></div>`;
+  $('#overlay').classList.add('open');}
+function saveProductoForm(isEdit){const desc=$('#p_desc').value.trim();if(!desc){toast('La descripción es obligatoria');return}
+  const com=+$('#p_com').value||0,dis=+$('#p_dis').value||0,may=+$('#p_may').value||0,gr=+$('#p_gr').value||0;
+  const prod={desc,gramos:gr,base:{COMERCIAL:com,DISTRIBUIDOR:dis,MAYORISTA:may},
+    pvta:{COMERCIAL:Math.round(com*1.25),DISTRIBUIDOR:Math.round(dis*1.25),MAYORISTA:Math.round(may*1.25)}};
+  const payload={action:'saveProducto',producto:{desc,gramos:gr,comercial:com,distribuidor:dis,mayorista:may,descOriginal:isEdit?DBP.productos[PROD_EDIT].desc:desc}};
+  if(isEdit&&PROD_EDIT!=null)DBP.productos[PROD_EDIT]=prod;else DBP.productos.push(prod);
+  postDrive(payload);toast('Producto guardado ✓');openProductos();}
 /* ---- Añadir solicitante / despachador (escribe a Drive) ---- */
 function openAddPersonas(){$('#modal').innerHTML=`<div class="mh"><b>Añadir solicitante / despachador</b><button class="x" onclick="closeModal()">×</button></div>
   <div class="frm" style="padding:20px">
@@ -269,7 +365,7 @@ function openAddPersonas(){$('#modal').innerHTML=`<div class="mh"><b>Añadir sol
 function addPersona(action,id){const v=$('#'+id).value.trim();if(!v){toast('Escribe un nombre');return}
   postDrive({action,nombre:v});$('#'+id).value='';toast('Guardado en Drive ✓');}
 function postDrive(payload){const u=syncUrl();if(!u){toast('Conecta Drive primero (⚙ en la app)');return}
-  try{fetch(u,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)});}catch(e){}}
+  try{fetch(u,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)}).catch(()=>{});}catch(e){}}
 
 /* ---- Import / Drive / Export ---- */
 function importFile(ev){const f=ev.target.files[0];if(!f)return;const r=new FileReader();

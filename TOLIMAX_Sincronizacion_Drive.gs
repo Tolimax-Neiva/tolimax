@@ -34,7 +34,9 @@ function doPost(e) {
   try {
     var body = JSON.parse(e.postData.contents);
     var action = body.action || 'pedido';
-    if (action === 'addCliente') return json(addCliente(body.cliente));
+    if (action === 'addCliente') return json(saveCliente(body.cliente, false));
+    if (action === 'updateCliente') return json(saveCliente(body.cliente, true));
+    if (action === 'saveProducto') return json(saveProducto(body.producto));
     if (action === 'addSolicitante') return json(addPersona('solicitantes', body.nombre));
     if (action === 'addDespachador') return json(addPersona('despachadores', body.nombre));
     return json(guardarPedido(body));
@@ -52,10 +54,38 @@ function guardarPedido(order) {
   guardarFactura(order);
   return { ok: true, folio: order.folio };
 }
-function addCliente(c) {
-  hoja('clientes').appendRow([c.cedula, c.nombre, c.tipo || 'COMERCIAL', c.dir || '', c.pago || '',
-    c.tel || '', c.mail || '', c.city || '', c.zip || '', c.country || 'Colombia']);
-  return { ok: true, cedula: c.cedula };
+function saveCliente(c, update) {
+  var sh = hoja('clientes');
+  var row = [c.cedula, c.nombre, c.tipo || 'COMERCIAL', c.dir || '', c.pago || '',
+    c.tel || '', c.mail || '', c.city || '', c.zip || '', c.country || 'Colombia'];
+  if (update) {
+    var vals = sh.getDataRange().getValues();
+    for (var i = 1; i < vals.length; i++) {
+      if (String(vals[i][0]).trim() === String(c.cedula).trim() &&
+          (!c._match || String(vals[i][1]).trim() === String(c._match).trim())) {
+        sh.getRange(i + 1, 1, 1, row.length).setValues([row]);
+        return { ok: true, updated: c.cedula };
+      }
+    }
+  }
+  sh.appendRow(row);
+  return { ok: true, added: c.cedula };
+}
+/* Producto: guarda base por lista y calcula ICUI 20% + IVA 5% + P.Venta */
+function saveProducto(p) {
+  var sh = hoja('precios');
+  function bloque(base) { base = Math.round(base || 0); return [base, Math.round(base * 0.2), Math.round(base * 0.05), Math.round(base * 1.25)]; }
+  var row = [p.desc, p.gramos || '']
+    .concat(bloque(p.comercial)).concat(bloque(p.distribuidor)).concat(bloque(p.mayorista));
+  var vals = sh.getDataRange().getValues();
+  for (var i = 1; i < vals.length; i++) {
+    if (String(vals[i][0]).trim().toUpperCase() === String(p.descOriginal || p.desc).trim().toUpperCase()) {
+      sh.getRange(i + 1, 1, 1, row.length).setValues([row]);
+      return { ok: true, updated: p.desc };
+    }
+  }
+  sh.appendRow(row);
+  return { ok: true, added: p.desc };
 }
 function addPersona(hojaNom, nombre) {
   hoja(hojaNom).appendRow([nombre, '', 'SI']);
