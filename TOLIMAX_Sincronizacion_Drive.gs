@@ -1,30 +1,34 @@
 /************************************************************************
  *  TOLIMAX · Conector Drive  (base de datos + pedidos + facturas)
- *  Lee tu base desde:  TOLIMAX_clientes · TOLIMAX_precios ·
- *  TOLIMAX_solicitantes · TOLIMAX_despachadores  (hojas de Google en tu Drive).
- *  Guarda pedidos en TOLIMAX_pedidos (se crea sola) y las facturas en la
- *  carpeta "TOLIMAX - Facturas".  Impuestos: ICUI 20% + IVA 5%.
+ *  Abre tus hojas por ID (funciona también en Unidades compartidas).
+ *  Impuestos: ICUI 20% + IVA 5%.
  *
- *  INSTALACIÓN (una sola vez):
+ *  INSTALACIÓN (una vez):
  *   1. https://script.google.com > "Nuevo proyecto", borra todo y pega esto.
+ *      IMPORTANTE: entra con la MISMA cuenta de Google dueña de las hojas.
  *   2. "Implementar" > "Nueva implementación" > "Aplicación web":
  *        Ejecutar como: Yo   ·   Con acceso: Cualquier persona
  *   3. Copia la URL /exec y pégala en la app (⚙ Configuración / Drive).
  *
- *  CARGAR LOS 838 CLIENTES DE UNA VEZ:
- *   - Pon la URL de tu aplicativo publicado en DATA_URL (abajo).
- *   - En el editor, elige la función  importarClientes  y pulsa Ejecutar.
+ *  CARGAR LOS 838 CLIENTES: elige la función  importarClientes  y Ejecutar.
  ************************************************************************/
-var PREFIJO = 'TOLIMAX_';
+
+/* IDs de tus hojas de Google (ya creadas en tu Drive) */
+var IDS = {
+  clientes:      '1AJCUyOZWjujhXdnZKGxQp38De7jDK31ggpZ4-b8fWOQ',
+  precios:       '1qvBB-XEDvhoTkayBMVvnadISpy4F24DbNbTNOotPTc0',
+  solicitantes:  '11ap5Kn_w-bA5r6IqiGkkYDqnL2XAIUepLitSKW4bcIY',
+  despachadores: '1moPr-ABs-6dgLOs-SXGUoA0bq7Cz1oAxpuc0Vhv1Dps'
+};
+var PEDIDOS_ID = '';   // se llena solo la primera vez (no tocar)
 var FOLDER_FACTURAS = 'TOLIMAX - Facturas';
-var DATA_URL = '';   // ej: https://TU-USUARIO.github.io/tolimax/data.json
+var DATA_URL = 'https://tolimax-neiva.github.io/tolimax/data.json';
 
 function doGet(e) {
   var res = (e && e.parameter && e.parameter.resource) || 'pedidos';
   if (res === 'catalogo') return json(getCatalogo());
   return json(getPedidos());
 }
-
 function doPost(e) {
   var lock = LockService.getScriptLock(); lock.waitLock(30000);
   try {
@@ -33,11 +37,11 @@ function doPost(e) {
     if (action === 'addCliente') return json(addCliente(body.cliente));
     if (action === 'addSolicitante') return json(addPersona('solicitantes', body.nombre));
     if (action === 'addDespachador') return json(addPersona('despachadores', body.nombre));
-    return json(guardarPedido(body));   // pedido por defecto
+    return json(guardarPedido(body));
   } catch (err) { return json({ ok: false, error: String(err) }); } finally { lock.releaseLock(); }
 }
 
-/* ---- Guardar pedido ---- */
+/* ---- Escrituras ---- */
 function guardarPedido(order) {
   var sh = pedidosSheet();
   order.items.forEach(function (it) {
@@ -48,18 +52,13 @@ function guardarPedido(order) {
   guardarFactura(order);
   return { ok: true, folio: order.folio };
 }
-
-/* ---- Añadir cliente ---- */
 function addCliente(c) {
-  var sh = openByName(PREFIJO + 'clientes').getSheets()[0];
-  sh.appendRow([c.cedula, c.nombre, c.tipo || 'COMERCIAL', c.dir || '', c.pago || '',
+  hoja('clientes').appendRow([c.cedula, c.nombre, c.tipo || 'COMERCIAL', c.dir || '', c.pago || '',
     c.tel || '', c.mail || '', c.city || '', c.zip || '', c.country || 'Colombia']);
   return { ok: true, cedula: c.cedula };
 }
-/* ---- Añadir solicitante / despachador ---- */
-function addPersona(hoja, nombre) {
-  var sh = openByName(PREFIJO + hoja).getSheets()[0];
-  sh.appendRow([nombre, '', 'SI']);
+function addPersona(hojaNom, nombre) {
+  hoja(hojaNom).appendRow([nombre, '', 'SI']);
   return { ok: true, nombre: nombre };
 }
 
@@ -69,7 +68,7 @@ function getCatalogo() {
     solicitantes: readLista('solicitantes'), despachadores: readLista('despachadores') };
 }
 function readClientes() {
-  var v = values('clientes'); if (!v.length) return []; v.shift();
+  var v = valores('clientes'); if (!v.length) return []; v.shift();
   return v.filter(function (r) { return r[0] !== '' && r[0] != null; }).map(function (r) {
     return { cedula: String(r[0]).trim(), nombre: String(r[1] || '').trim(),
       tipo: String(r[2] || 'COMERCIAL').trim(), dir: String(r[3] || '').trim(),
@@ -77,19 +76,17 @@ function readClientes() {
       mail: String(r[6] || '').trim(), city: String(r[7] || '').trim() }; });
 }
 function readPrecios() {
-  var v = values('precios'); if (!v.length) return []; v.shift();
+  var v = valores('precios'); if (!v.length) return []; v.shift();
   return v.filter(function (r) { return r[0]; }).map(function (r) {
     return { desc: String(r[0]).trim(), gramos: r[1],
       base: { COMERCIAL: Math.round(r[2]), DISTRIBUIDOR: Math.round(r[6]), MAYORISTA: Math.round(r[10]) },
       pvta: { COMERCIAL: Math.round(r[5]), DISTRIBUIDOR: Math.round(r[9]), MAYORISTA: Math.round(r[13]) } }; });
 }
 function readLista(name) {
-  var v = values(name); if (!v.length) return []; v.shift();
+  var v = valores(name); if (!v.length) return []; v.shift();
   return v.filter(function (r) { return r[0] && String(r[2] || 'SI').toUpperCase() !== 'NO'; })
           .map(function (r) { return String(r[0]).trim(); });
 }
-
-/* ---- Pedidos guardados (Panel) ---- */
 function getPedidos() {
   var sh = pedidosSheet(); var rows = sh.getDataRange().getValues(); rows.shift();
   var by = {};
@@ -103,36 +100,28 @@ function getPedidos() {
   return Object.keys(by).map(function (k) { return by[k]; });
 }
 
-/* ---- Carga masiva de clientes desde el aplicativo web ---- */
+/* ---- Carga masiva de clientes desde la web ---- */
 function importarClientes() {
-  if (!DATA_URL) throw new Error('Pon la URL de tu app en DATA_URL (arriba del script).');
+  if (!DATA_URL) throw new Error('Falta DATA_URL.');
   var data = JSON.parse(UrlFetchApp.fetch(DATA_URL).getContentText());
-  var sh = openByName(PREFIJO + 'clientes').getSheets()[0];
-  sh.clear();
+  var sh = hoja('clientes'); sh.clear();
   sh.appendRow(['Cedula','Nombre y apellido','tipo','Address','Tipo de pago','Phone1','E_Mail','City','ZipCode','Country']);
-  var rows = data.clientes.map(function (c) {
-    return [c.cedula, c.nombre, c.tipo, c.dir, c.pago, c.tel, c.mail, c.city, '', 'Colombia']; });
+  var rows = data.clientes.map(function (c) { return [c.cedula, c.nombre, c.tipo, c.dir, c.pago, c.tel, c.mail, c.city, '', 'Colombia']; });
   if (rows.length) sh.getRange(2, 1, rows.length, 10).setValues(rows);
   return rows.length;
 }
 
-/* ---- Helpers ---- */
-function openByName(name) {
-  var it = DriveApp.getFilesByName(name);
-  if (!it.hasNext()) throw new Error('No encuentro la hoja "' + name + '".');
-  return SpreadsheetApp.open(it.next());
-}
-function values(shortName) {
-  try { return openByName(PREFIJO + shortName).getSheets()[0].getDataRange().getValues(); }
-  catch (e) { return []; }
-}
+/* ---- Helpers (abren por ID) ---- */
+function hoja(name) { return SpreadsheetApp.openById(IDS[name]).getSheets()[0]; }
+function valores(name) { try { return hoja(name).getDataRange().getValues(); } catch (e) { return []; } }
 function pedidosSheet() {
-  var name = PREFIJO + 'pedidos';
-  var it = DriveApp.getFilesByName(name); var ss;
-  if (it.hasNext()) ss = SpreadsheetApp.open(it.next());
-  else { ss = SpreadsheetApp.create(name);
-    ss.getSheets()[0].appendRow(['Folio','Fecha','Solicitante','Despachador','Cedula','Cliente','Lista',
-      'Forma de pago','Producto','Cantidad','Subtotal.Unit','Subtotal.Linea','Subtotal','ICUI','IVA','Total','Registrado']); }
+  var props = PropertiesService.getScriptProperties();
+  var id = PEDIDOS_ID || props.getProperty('PEDIDOS_ID');
+  if (id) { try { return SpreadsheetApp.openById(id).getSheets()[0]; } catch (e) {} }
+  var ss = SpreadsheetApp.create('TOLIMAX_pedidos');
+  ss.getSheets()[0].appendRow(['Folio','Fecha','Solicitante','Despachador','Cedula','Cliente','Lista',
+    'Forma de pago','Producto','Cantidad','Subtotal.Unit','Subtotal.Linea','Subtotal','ICUI','IVA','Total','Registrado']);
+  props.setProperty('PEDIDOS_ID', ss.getId());
   return ss.getSheets()[0];
 }
 function guardarFactura(order) {
