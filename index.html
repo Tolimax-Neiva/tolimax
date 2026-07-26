@@ -77,6 +77,28 @@ body.ordering #bgvid,body.ordering #bgvid-ov{opacity:0;pointer-events:none}
 .top img{filter:drop-shadow(0 3px 10px rgba(0,0,0,.55))}
 .enterFade{animation:enterFade .7s ease}
 @keyframes enterFade{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+/* ---- Intro / splash (encima del video) ---- */
+#intro{position:fixed;inset:0;z-index:600;cursor:pointer;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:radial-gradient(120% 120% at 50% 0%,#5A3420 0%,#3A2013 45%,#190b05 100%);transition:opacity .8s ease}
+#intro.hide{opacity:0;pointer-events:none}
+#intro .drop{position:absolute;top:-40px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#C88A2E,#5A3420);animation:fall linear infinite;pointer-events:none}
+@keyframes fall{0%{transform:translateY(-60px) rotate(0)}100%{transform:translateY(112vh) rotate(360deg)}}
+#intro .logoCard{background:linear-gradient(145deg,#fff,#F7F0E4);border-radius:22px;padding:24px 32px;box-shadow:0 26px 60px rgba(0,0,0,.55);z-index:2;
+  transform:translateY(-140vh) rotate(-8deg);animation:dropIn 1.15s cubic-bezier(.2,.85,.25,1.05) .25s forwards}
+#intro .logoCard img{height:70px;display:block}
+#intro.go .logoCard img{animation:breathe 1.4s ease infinite}
+@keyframes dropIn{0%{transform:translateY(-140vh) rotate(-8deg)}68%{transform:translateY(14px) rotate(2deg)}84%{transform:translateY(-6px)}100%{transform:translateY(0) rotate(0)}}
+@keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+#intro .lema{color:#E0B067;font-size:21px;font-style:italic;letter-spacing:1px;margin-top:20px;opacity:0;z-index:2;animation:fadeUp .8s ease 1.25s forwards}
+#intro .brandName{color:#fff;font-size:13px;letter-spacing:6px;text-transform:uppercase;margin-top:8px;opacity:0;z-index:2;animation:fadeUp .8s ease 1.5s forwards}
+#intro .hint{position:absolute;bottom:44px;color:#c9a986;font-size:12px;letter-spacing:2px;text-transform:uppercase;opacity:0;z-index:2;animation:fadeUp .8s ease 1.9s forwards, pulse 2s ease 2.7s infinite}
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:.45}50%{opacity:1}}
+#intro .loader{position:absolute;bottom:40px;display:none;flex-direction:column;align-items:center;gap:12px;z-index:2}
+#intro.go .hint{display:none}#intro.go .loader{display:flex}
+#intro .spin{width:32px;height:32px;border-radius:50%;border:3px solid rgba(224,176,103,.28);border-top-color:#E0B067;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#intro .loader span{color:#e7d6c2;font-size:13px;letter-spacing:1px}
 </style>
 </head>
 <body>
@@ -84,6 +106,13 @@ body.ordering #bgvid,body.ordering #bgvid-ov{opacity:0;pointer-events:none}
   <source src="intro.mp4" type="video/mp4">
 </video>
 <div id="bgvid-ov"></div>
+<div id="intro" onclick="enterApp()">
+  <div class="logoCard"><img src="logo.jpeg" alt="TOLIMAX"></div>
+  <div class="lema">El sabor natural</div>
+  <div class="brandName">Pedidos de producción</div>
+  <div class="hint">Toca para comenzar</div>
+  <div class="loader"><div class="spin"></div><span id="loadTxt">Cargando base de datos…</span></div>
+</div>
 <div class="wrap">
   <div class="top"><img src="logo.jpeg" alt="TOLIMAX"><span class="sub">Pedidos de producción</span></div>
 
@@ -228,10 +257,18 @@ function closeModal(){$('#overlay').classList.remove('open')}
 $('#overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeModal()});
 let tt;function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),2500)}
 applyCatalog(LS.get('tlx_catalog',null));fillPeople();setupCombo();if(CFG.syncUrl)loadCatalog(true);
-/* ---- Video de fondo: reintenta reproducir en móviles ---- */
-(function(){var v=document.getElementById('bgvid');if(!v)return;
-  var play=function(){v.play&&v.play().catch(function(){});};
-  play();document.addEventListener('touchstart',play,{once:true});document.addEventListener('click',play,{once:true});})();
+/* ---- Video de fondo ---- */
+function playBg(){var v=document.getElementById('bgvid');if(v&&v.play)v.play().catch(function(){});}
+playBg();document.addEventListener('touchstart',playBg,{once:true});document.addEventListener('click',playBg,{once:true});
+/* ---- Intro / splash (encima del video) ---- */
+(function(){const box=document.getElementById('intro');if(!box)return;
+  for(let i=0;i<16;i++){const d=document.createElement('div');const s=6+Math.random()*16;
+    d.className='drop';d.style.width=s+'px';d.style.height=s+'px';d.style.left=(Math.random()*100)+'%';
+    d.style.animationDuration=(4+Math.random()*5)+'s';d.style.animationDelay=(-Math.random()*7)+'s';d.style.opacity=(.15+Math.random()*.4);box.appendChild(d);}})();
+let _entered=false;
+function enterApp(){if(_entered)return;_entered=true;const i=document.getElementById('intro');i.classList.add('go');
+  playBg(); if(CFG.syncUrl)loadCatalog(true);
+  setTimeout(function(){fillPeople();i.classList.add('hide');setTimeout(function(){if(i.parentNode)i.parentNode.removeChild(i);},900);},2300);}
 </script>
 </body>
 </html>
