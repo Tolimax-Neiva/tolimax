@@ -68,7 +68,9 @@ select,input,button{font-family:inherit;font-size:15px}
 #bgvid{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;transition:opacity 1s ease}
 #bgvid-ov{position:fixed;inset:0;z-index:1;transition:opacity 1s ease;
   background:linear-gradient(180deg,rgba(25,11,5,.55) 0%,rgba(42,23,16,.72) 55%,rgba(20,9,4,.9) 100%)}
-.wrap{position:relative;z-index:2}
+.wrap{position:relative;z-index:2;transition:opacity .7s ease}
+/* mientras la intro esté visible (sin subir), ocultamos la app detrás */
+#intro:not(.lift) ~ .wrap{opacity:0;pointer-events:none}
 /* al pasar a "hacer pedido" ocultamos el video para no distraer */
 body.ordering #bgvid,body.ordering #bgvid-ov{opacity:0;pointer-events:none}
 /* tarjeta de inicio con efecto vidrio sobre el video */
@@ -118,7 +120,7 @@ body.ordering #bgvid,body.ordering #bgvid-ov{opacity:0;pointer-events:none}
 </style>
 </head>
 <body>
-<video id="bgvid" autoplay muted loop playsinline preload="auto" poster="logo.jpeg">
+<video id="bgvid" autoplay muted loop playsinline preload="auto">
   <source src="bgloop.mp4" type="video/mp4">
 </video>
 <div id="bgvid-ov"></div>
