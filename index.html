@@ -77,36 +77,45 @@ body.ordering #bgvid,body.ordering #bgvid-ov{opacity:0;pointer-events:none}
 .top img{filter:drop-shadow(0 3px 10px rgba(0,0,0,.55))}
 .enterFade{animation:enterFade .7s ease}
 @keyframes enterFade{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
-/* ---- Intro / splash (encima del video) ---- */
+/* ---- Intro / splash (video visible detrás) ---- */
 #intro{position:fixed;inset:0;z-index:600;cursor:pointer;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  background:radial-gradient(120% 120% at 50% 0%,#5A3420 0%,#3A2013 45%,#190b05 100%);transition:opacity .8s ease}
+  background:radial-gradient(130% 120% at 50% 15%,rgba(90,52,32,.30) 0%,rgba(42,23,16,.60) 50%,rgba(15,7,3,.90) 100%);
+  transition:transform 1s cubic-bezier(.7,0,.25,1),opacity .6s ease}
+#intro.lift{transform:translateY(-106%)}
 #intro.hide{opacity:0;pointer-events:none}
-#intro .drop{position:absolute;top:-40px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#C88A2E,#5A3420);animation:fall linear infinite;pointer-events:none}
-@keyframes fall{0%{transform:translateY(-60px) rotate(0)}100%{transform:translateY(112vh) rotate(360deg)}}
-#intro .logoCard{background:linear-gradient(145deg,#fff,#F7F0E4);border-radius:22px;padding:24px 32px;box-shadow:0 26px 60px rgba(0,0,0,.55);z-index:2;
-  transform:translateY(-140vh) rotate(-8deg);animation:dropIn 1.15s cubic-bezier(.2,.85,.25,1.05) .25s forwards}
-#intro .logoCard img{height:70px;display:block}
-#intro.go .logoCard img{animation:breathe 1.4s ease infinite}
+#intro .pcont{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:1}
+#intro .p{position:absolute;bottom:-16px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#F5D89A,#C88A2E);
+  box-shadow:0 0 8px rgba(224,176,103,.7);opacity:0;animation:rise linear infinite}
+@keyframes rise{0%{transform:translateY(0) scale(1);opacity:0}12%{opacity:.9}100%{transform:translateY(-108vh) scale(.4);opacity:0}}
+#intro .logoCard{position:relative;overflow:hidden;background:linear-gradient(145deg,#fff,#F7F0E4);border-radius:22px;padding:24px 32px;
+  box-shadow:0 26px 70px rgba(0,0,0,.6);z-index:2;transform:translateY(-140vh) rotate(-8deg);
+  animation:dropIn 1.15s cubic-bezier(.2,.85,.25,1.05) .25s forwards}
+#intro .logoCard img{height:72px;display:block}
+#intro .logoCard::after{content:"";position:absolute;top:0;left:-60%;width:45%;height:100%;transform:skewX(-20deg);
+  background:linear-gradient(100deg,transparent,rgba(255,255,255,.85),transparent);animation:shine 3.4s ease-in-out 1.6s infinite}
+@keyframes shine{0%{left:-60%}55%{left:135%}100%{left:135%}}
+#intro.go .logoCard img{animation:breathe 1.3s ease infinite}
 @keyframes dropIn{0%{transform:translateY(-140vh) rotate(-8deg)}68%{transform:translateY(14px) rotate(2deg)}84%{transform:translateY(-6px)}100%{transform:translateY(0) rotate(0)}}
 @keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
-#intro .lema{color:#E0B067;font-size:21px;font-style:italic;letter-spacing:1px;margin-top:20px;opacity:0;z-index:2;animation:fadeUp .8s ease 1.25s forwards}
-#intro .brandName{color:#fff;font-size:13px;letter-spacing:6px;text-transform:uppercase;margin-top:8px;opacity:0;z-index:2;animation:fadeUp .8s ease 1.5s forwards}
-#intro .hint{position:absolute;bottom:44px;color:#c9a986;font-size:12px;letter-spacing:2px;text-transform:uppercase;opacity:0;z-index:2;animation:fadeUp .8s ease 1.9s forwards, pulse 2s ease 2.7s infinite}
+#intro .lema{color:#F0C877;font-size:22px;font-style:italic;letter-spacing:1px;margin-top:22px;opacity:0;z-index:2;text-shadow:0 2px 14px rgba(0,0,0,.65);animation:fadeUp .8s ease 1.25s forwards}
+#intro .brandName{color:#fff;font-size:12px;letter-spacing:6px;text-transform:uppercase;margin-top:8px;opacity:0;z-index:2;text-shadow:0 2px 10px rgba(0,0,0,.65);animation:fadeUp .8s ease 1.5s forwards}
+#intro .hint{position:absolute;bottom:46px;color:#f0d6ad;font-size:12px;letter-spacing:2px;text-transform:uppercase;opacity:0;z-index:2;text-shadow:0 2px 10px rgba(0,0,0,.7);animation:fadeUp .8s ease 1.9s forwards, pulse 2s ease 2.7s infinite}
 @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
-@keyframes pulse{0%,100%{opacity:.45}50%{opacity:1}}
-#intro .loader{position:absolute;bottom:40px;display:none;flex-direction:column;align-items:center;gap:12px;z-index:2}
+@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+#intro .loader{position:absolute;bottom:42px;display:none;flex-direction:column;align-items:center;gap:12px;z-index:2}
 #intro.go .hint{display:none}#intro.go .loader{display:flex}
-#intro .spin{width:32px;height:32px;border-radius:50%;border:3px solid rgba(224,176,103,.28);border-top-color:#E0B067;animation:spin .8s linear infinite}
+#intro .spin{width:32px;height:32px;border-radius:50%;border:3px solid rgba(240,200,120,.3);border-top-color:#F0C877;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-#intro .loader span{color:#e7d6c2;font-size:13px;letter-spacing:1px}
+#intro .loader span{color:#f0e0c4;font-size:13px;letter-spacing:1px;text-shadow:0 2px 8px rgba(0,0,0,.7)}
 </style>
 </head>
 <body>
 <video id="bgvid" autoplay muted loop playsinline preload="auto" poster="logo.jpeg">
-  <source src="intro.mp4" type="video/mp4">
+  <source src="bgloop.mp4" type="video/mp4">
 </video>
 <div id="bgvid-ov"></div>
 <div id="intro" onclick="enterApp()">
+  <div class="pcont" id="pcont"></div>
   <div class="logoCard"><img src="logo.jpeg" alt="TOLIMAX"></div>
   <div class="lema">El sabor natural</div>
   <div class="brandName">Pedidos de producción</div>
@@ -260,15 +269,16 @@ applyCatalog(LS.get('tlx_catalog',null));fillPeople();setupCombo();if(CFG.syncUr
 /* ---- Video de fondo ---- */
 function playBg(){var v=document.getElementById('bgvid');if(v&&v.play)v.play().catch(function(){});}
 playBg();document.addEventListener('touchstart',playBg,{once:true});document.addEventListener('click',playBg,{once:true});
-/* ---- Intro / splash (encima del video) ---- */
-(function(){const box=document.getElementById('intro');if(!box)return;
-  for(let i=0;i<16;i++){const d=document.createElement('div');const s=6+Math.random()*16;
-    d.className='drop';d.style.width=s+'px';d.style.height=s+'px';d.style.left=(Math.random()*100)+'%';
-    d.style.animationDuration=(4+Math.random()*5)+'s';d.style.animationDelay=(-Math.random()*7)+'s';d.style.opacity=(.15+Math.random()*.4);box.appendChild(d);}})();
+/* ---- Intro: partículas doradas subiendo ---- */
+(function(){const box=document.getElementById('pcont');if(!box)return;
+  for(let i=0;i<26;i++){const d=document.createElement('div');const s=3+Math.random()*7;
+    d.className='p';d.style.width=s+'px';d.style.height=s+'px';d.style.left=(Math.random()*100)+'%';
+    d.style.animationDuration=(6+Math.random()*7)+'s';d.style.animationDelay=(-Math.random()*10)+'s';box.appendChild(d);}})();
 let _entered=false;
 function enterApp(){if(_entered)return;_entered=true;const i=document.getElementById('intro');i.classList.add('go');
   playBg(); if(CFG.syncUrl)loadCatalog(true);
-  setTimeout(function(){fillPeople();i.classList.add('hide');setTimeout(function(){if(i.parentNode)i.parentNode.removeChild(i);},900);},2300);}
+  setTimeout(function(){fillPeople();i.classList.add('lift');   // cortina que sube y revela la app
+    setTimeout(function(){if(i.parentNode)i.parentNode.removeChild(i);},1000);},2100);}
 </script>
 </body>
 </html>
