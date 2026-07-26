@@ -166,7 +166,11 @@ const MES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Se
 const LS={get:(k,d)=>{try{const v=localStorage.getItem(k);return v===null?d:JSON.parse(v)}catch(e){return d}},set:(k,v)=>localStorage.setItem(k,JSON.stringify(v))};
 const ICUI=0.20,IVA=0.05;
 let ORDERS=[],DEMO=false,CURMONTH=null,VIEW='list';
-function syncUrl(){return (LS.get('tlx_cfg',{})||{}).syncUrl||''}
+const DEFAULT_SYNC='https://script.google.com/macros/s/AKfycbysly2NjPXQAUqwrxjn8Qwb4KS3RFxsI0OtPPcz-58ZpRYn1Zx3_QqAPWtQI3XZE24vvg/exec';
+function syncUrl(){return ((LS.get('tlx_cfg',{})||{}).syncUrl)||DEFAULT_SYNC}
+function autoLoadDrive(){const u=syncUrl();if(!u)return;
+  fetch(u).then(r=>r.json()).then(d=>{if(Array.isArray(d)&&d.length){ORDERS=d;DEMO=false;const b=$('#demoBanner');if(b)b.style.display='none';
+    ORDERS.forEach(taxes);LS.set('tlx_orders',d);CURMONTH=null;ORDERS.sort((a,b)=>new Date(b.fecha||b.creado)-new Date(a.fecha||a.creado));buildMonths();}}).catch(()=>{});}
 function mk(o){const d=new Date(o.fecha||o.creado);return isNaN(d)?'0000-00':d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')}
 function mName(k){const[y,m]=k.split('-');return MES[parseInt(m)-1]+' '+y}
 function taxes(o){ // compat: recalcula si faltan
@@ -176,7 +180,8 @@ function taxes(o){ // compat: recalcula si faltan
 function load(){ORDERS=LS.get('tlx_orders',[]);
   if(!ORDERS.length){ORDERS=demoData();DEMO=true;$('#demoBanner').style.display='flex'}
   ORDERS.forEach(taxes);
-  ORDERS.sort((a,b)=>new Date(b.fecha||b.creado)-new Date(a.fecha||a.creado));buildMonths();}
+  ORDERS.sort((a,b)=>new Date(b.fecha||b.creado)-new Date(a.fecha||a.creado));buildMonths();
+  autoLoadDrive();}
 function buildMonths(){const map={};ORDERS.forEach(o=>{map[mk(o)]=(map[mk(o)]||0)+1});
   const keys=Object.keys(map).sort().reverse();if(!CURMONTH||!map[CURMONTH])CURMONTH=keys[0]||null;
   $('#months').innerHTML=keys.map(k=>`<li class="${k===CURMONTH?'active':''}" onclick="pickMonth('${k}')"><span>${mName(k)}</span><span class="b">${map[k]}</span></li>`).join('')||'<li><small>Sin datos</small></li>';

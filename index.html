@@ -111,7 +111,9 @@ select,input,button{font-family:inherit;font-size:15px}
 let DB=window.TOLIMAX_DATA||{clientes:[],productos:[],empresa:{}};
 const LS={get:(k,d)=>{try{const v=localStorage.getItem(k);return v===null?d:JSON.parse(v)}catch(e){return d}},set:(k,v)=>localStorage.setItem(k,JSON.stringify(v))};
 const $=s=>document.querySelector(s);
+const DEFAULT_SYNC='https://script.google.com/macros/s/AKfycbysly2NjPXQAUqwrxjn8Qwb4KS3RFxsI0OtPPcz-58ZpRYn1Zx3_QqAPWtQI3XZE24vvg/exec';
 let CFG=LS.get('tlx_cfg',{syncUrl:'',solicitantes:['Producción 1','Producción 2'],despachadores:['Despachador 1','Despachador 2']});
+if(!CFG.syncUrl)CFG.syncUrl=DEFAULT_SYNC;   // conexión a Drive fija (funciona en cualquier dispositivo)
 function saveCfg(){LS.set('tlx_cfg',CFG)}
 let SESSION={solicitante:'',despachador:''},CLIENTE=null,LINES=[];
 let SOL=CFG.solicitantes.slice(),DES=CFG.despachadores.slice(),CATLOADED=false;
