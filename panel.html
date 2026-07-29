@@ -39,12 +39,12 @@ body{font-family:'Segoe UI',system-ui,-apple-system,Roboto,Arial,sans-serif;back
 .search{flex:1;min-width:160px;padding:11px 14px;border:1.5px solid var(--line);border-radius:11px;font-size:14px;outline:none}
 .search:focus{border-color:var(--gold)}
 table.orders{width:100%;border-collapse:collapse}
-.orders-scroll{overflow-x:auto}
-table.orders{min-width:760px;table-layout:fixed}
-table.orders th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:11px 9px;border-bottom:1px solid var(--line);white-space:nowrap}
-table.orders td{padding:11px 9px;border-bottom:1px solid #f1e8da;font-size:13.5px;overflow-wrap:anywhere;word-break:break-word}
-table.orders col.c-cli{width:22%}table.orders col.c-fol{width:12%}table.orders col.c-fec{width:8%}table.orders col.c-per{width:14%}table.orders col.c-lis{width:9%}table.orders col.c-est{width:10%}table.orders col.c-tot{width:11%}
-table.orders td.tot,table.orders th:last-child{text-align:right;white-space:nowrap;padding-right:16px}
+.orders-scroll{overflow-x:auto;padding:0 12px}
+table.orders{min-width:760px;table-layout:fixed;width:100%}
+table.orders th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:11px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+table.orders td{padding:11px 8px;border-bottom:1px solid #f1e8da;font-size:13.5px;overflow-wrap:anywhere;word-break:break-word}
+table.orders col.c-fol{width:13%}table.orders col.c-fec{width:7%}table.orders col.c-cli{width:19%}table.orders col.c-per{width:13%}table.orders col.c-lis{width:8%}table.orders col.c-est{width:11%}table.orders col.c-tot{width:13%}
+table.orders td.tot,table.orders th:last-child{text-align:right;white-space:nowrap;padding-right:4px}
 table.orders tbody tr{cursor:pointer}table.orders tbody tr:hover{background:var(--cream)}
 .folio{font-weight:800;color:var(--cacao-700);font-family:ui-monospace,monospace;font-size:13px}
 .tot{font-weight:800;color:var(--cacao-700);text-align:right}
