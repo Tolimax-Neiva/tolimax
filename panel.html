@@ -39,8 +39,12 @@ body{font-family:'Segoe UI',system-ui,-apple-system,Roboto,Arial,sans-serif;back
 .search{flex:1;min-width:160px;padding:11px 14px;border:1.5px solid var(--line);border-radius:11px;font-size:14px;outline:none}
 .search:focus{border-color:var(--gold)}
 table.orders{width:100%;border-collapse:collapse}
-table.orders th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:11px 14px;border-bottom:1px solid var(--line)}
-table.orders td{padding:12px 14px;border-bottom:1px solid #f1e8da;font-size:14px}
+.orders-scroll{overflow-x:auto}
+table.orders{min-width:720px}
+table.orders th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:11px 9px;border-bottom:1px solid var(--line);white-space:nowrap}
+table.orders td{padding:11px 9px;border-bottom:1px solid #f1e8da;font-size:13.5px}
+table.orders td.folio{white-space:nowrap}
+table.orders th:last-child,table.orders td.tot{padding-right:16px}
 table.orders tbody tr{cursor:pointer}table.orders tbody tr:hover{background:var(--cream)}
 .folio{font-weight:800;color:var(--cacao-700);font-family:ui-monospace,monospace;font-size:13px}
 .tot{font-weight:800;color:var(--cacao-700);text-align:right}
@@ -128,8 +132,8 @@ table.orders tbody tr{cursor:pointer}table.orders tbody tr:hover{background:var(
     <div class="panel">
       <div class="toparea"><input class="search" id="q" placeholder="🔎 Buscar folio, cliente, cédula, producto…" oninput="renderList()">
         <span class="tbtn" style="color:var(--cacao-600);background:var(--cream)" id="monthLabel"></span></div>
-      <table class="orders"><thead><tr><th>Folio</th><th>Fecha</th><th>Cliente</th><th>Solicitante</th><th>Despachador</th><th>Lista</th><th style="text-align:center">Estado</th><th style="text-align:right">Total</th></tr></thead>
-        <tbody id="rows"></tbody></table>
+      <div class="orders-scroll"><table class="orders"><thead><tr><th>Folio</th><th>Fecha</th><th>Cliente</th><th>Solicitante</th><th>Despachador</th><th>Lista</th><th style="text-align:center">Estado</th><th style="text-align:right">Total</th></tr></thead>
+        <tbody id="rows"></tbody></table></div>
       <div class="empty" id="empty" style="display:none">Sin pedidos para mostrar.</div>
     </div>
   </div>
