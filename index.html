@@ -11,7 +11,26 @@
 --red:#D0021B;--ok:#2E7D46;--danger:#B23B2E;--shadow:0 10px 30px rgba(42,23,16,.14);}
 *{box-sizing:border-box}html,body{margin:0}
 body{font-family:'Segoe UI',system-ui,-apple-system,Roboto,Arial,sans-serif;background:linear-gradient(160deg,#3A2013,#241009 60%);color:var(--ink);min-height:100vh}
-.wrap{max-width:820px;margin:0 auto;padding:16px}
+.wrap{max-width:1120px;margin:0 auto;padding:16px}
+#screen1{max-width:520px;margin:0 auto}
+.pedido-grid{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
+@media(max-width:820px){.pedido-grid{grid-template-columns:1fr}}
+#ordersPanel{padding:0;overflow:hidden}
+.op-head{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--cream-2)}
+.op-head b{color:var(--cacao-700)}
+#ordersList{max-height:72vh;overflow:auto}
+.oitem{padding:11px 14px;border-bottom:1px solid #efe2cf;cursor:pointer}
+.oitem:hover{background:var(--cream)}
+.oitem.sel{background:var(--cream-2);border-left:4px solid var(--gold)}
+.oitem .of{display:flex;justify-content:space-between;align-items:center;gap:6px}
+.oitem .of b{color:var(--cacao-700);font-size:13px;font-family:ui-monospace,monospace}
+.oitem .oc{font-weight:700;font-size:14px;margin-top:2px;color:var(--ink)}
+.oitem .ou{font-size:12px;color:var(--muted);margin-top:1px}
+.badge{font-size:10px;font-weight:800;padding:2px 7px;border-radius:6px;white-space:nowrap}
+.badge.lock{background:#ece5db;color:#8a6f5c}.badge.pend{background:#EAF3EA;color:#2E7D46}
+#lockNote{display:none;background:#f4efe6;border:1px solid var(--line);border-radius:12px;padding:12px;text-align:center;color:var(--cacao-600);font-weight:700;margin-top:6px}
+.line select:disabled,.line input:disabled{background:#f3ede2;color:#9a8a75}
+.line select option:disabled{color:#bbb}
 .top{display:flex;align-items:center;gap:12px;padding:16px 4px}
 .top img{height:52px;width:auto;filter:drop-shadow(0 3px 8px rgba(0,0,0,.4))}
 .top .sub{color:var(--gold-soft);font-size:11px;letter-spacing:2px;text-transform:uppercase;margin-left:auto}
@@ -149,9 +168,10 @@ body.ordering #bgvid,body.ordering #bgvid-ov{opacity:0;pointer-events:none}
       <span class="link" onclick="openSettings()">⚙ Configuración / Drive</span></div>
   </div>
 
-  <div id="screen2" class="card hidden">
+  <div id="area2" class="pedido-grid hidden">
+   <div id="screen2" class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-      <h1 style="margin:0">Nuevo pedido</h1><span class="chip" id="whoChip"></span></div>
+      <h1 style="margin:0" id="pedTitle">Nuevo pedido</h1><span class="chip" id="whoChip"></span></div>
     <div class="subt" id="folioHint"></div>
     <label class="fld">Fecha y hora</label>
     <input id="fecha" type="datetime-local" class="inp">
@@ -162,11 +182,18 @@ body.ordering #bgvid,body.ordering #bgvid-ov{opacity:0;pointer-events:none}
     <div id="clienteInfo" class="mini"></div>
     <label class="fld" style="margin-top:18px">Productos <small>· agrega las líneas que necesites</small></label>
     <div id="lines"></div>
-    <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:2px" onclick="addLine()">＋ Agregar producto</button>
+    <button class="btn btn-ghost btn-sm" id="addProdBtn" style="width:100%;margin-top:2px" onclick="addLine()">＋ Agregar producto</button>
     <div class="count-pill"><span>Unidades totales</span><b id="totUnits">0</b></div>
-    <div style="height:16px"></div>
-    <button class="btn btn-primary" onclick="enviarPedido()">ENVIAR PEDIDO</button>
-    <div class="toolbar"><span class="link" onclick="volver()">← Cambiar solicitante/despachador</span></div>
+    <div style="height:14px"></div>
+    <div id="lockNote">🔒 Pedido facturado — solo lectura</div>
+    <button class="btn btn-primary" id="btnSend" onclick="enviarPedido()">ENVIAR PEDIDO</button>
+    <div class="toolbar"><span class="link" onclick="nuevoPedido()">＋ Nueva orden</span>
+      <span class="link" onclick="volver()">← Cambiar solicitante/despachador</span></div>
+   </div>
+   <div id="ordersPanel" class="card">
+     <div class="op-head"><b>📋 Órdenes de hoy</b><span class="link" style="color:var(--cacao-600)" onclick="refreshOrders(true)">↻ Actualizar</span></div>
+     <div id="ordersList"></div>
+   </div>
   </div>
   <div class="foot">TOLIMAX S.A. · Industrial Cacaotera del Huila · Neiva</div>
 </div>
@@ -183,6 +210,10 @@ if(!CFG.syncUrl)CFG.syncUrl=DEFAULT_SYNC;   // conexión a Drive fija (funciona 
 function saveCfg(){LS.set('tlx_cfg',CFG)}
 let SESSION={solicitante:'',despachador:''},CLIENTE=null,LINES=[];
 let SOL=CFG.solicitantes.slice(),DES=CFG.despachadores.slice(),CATLOADED=false;
+let ALLORDERS=[],NEXTNUM=1,EDIT_FOLIO=null,READONLY=false;
+function todayStr(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function ordNum(f){const m=/(\d+)\s*$/.exec(f||'');return m?parseInt(m[1]):0;}
+function fmtFolio(n){return 'Orden de Pedido -'+String(n).padStart(4,'0');}
 const ICUI=0.20, IVA=0.05;   // impuesto ultraprocesados 20% + IVA 5%
 
 function applyCatalog(cat){if(!cat)return;
@@ -200,12 +231,11 @@ function fillPeople(){$('#solicitante').innerHTML=SOL.map(x=>`<option>${x}</opti
   $('#despachador').innerHTML=DES.map(x=>`<option>${x}</option>`).join('');}
 function aceptar(){SESSION.solicitante=$('#solicitante').value;SESSION.despachador=$('#despachador').value;
   if(!SESSION.solicitante||!SESSION.despachador){toast('Selecciona ambos');return}
-  $('#whoChip').textContent=SESSION.despachador;$('#folioHint').textContent='Solicita: '+SESSION.solicitante+' · Próximo folio: '+nextFolio(true);
-  $('#screen1').classList.add('hidden');$('#screen2').classList.remove('hidden');
-  document.body.classList.add('ordering');$('#screen2').classList.add('enterFade');
-  CLIENTE=null;LINES=[];$('#clienteInput').value='';$('#clienteInfo').textContent='';
-  const n=new Date();n.setMinutes(n.getMinutes()-n.getTimezoneOffset());$('#fecha').value=n.toISOString().slice(0,16);addLine();window.scrollTo(0,0);}
-function volver(){$('#screen2').classList.add('hidden');$('#screen1').classList.remove('hidden');document.body.classList.remove('ordering');fillPeople()}
+  $('#whoChip').textContent=SESSION.despachador;
+  $('#screen1').classList.add('hidden');$('#area2').classList.remove('hidden');
+  document.body.classList.add('ordering');$('#area2').classList.add('enterFade');
+  nuevoPedido();refreshOrders();window.scrollTo(0,0);}
+function volver(){$('#area2').classList.add('hidden');$('#screen1').classList.remove('hidden');document.body.classList.remove('ordering');fillPeople()}
 function tierOf(c){const t=(c.tipo||'COMERCIAL').toUpperCase();return (t==='MAYORISTA'||t==='DISTRIBUIDOR')?t:'COMERCIAL'}
 function setupCombo(){const inp=$('#clienteInput'),list=$('#clienteList');
   const render=q=>{q=(q||'').trim().toLowerCase();let a=DB.clientes;
@@ -216,42 +246,81 @@ function setupCombo(){const inp=$('#clienteInput'),list=$('#clienteList');
   document.addEventListener('click',e=>{if(!$('#clienteCombo').contains(e.target))list.classList.remove('open')});}
 function selCliente(ced){CLIENTE=DB.clientes.find(c=>c.cedula===ced);$('#clienteInput').value=CLIENTE.nombre;$('#clienteList').classList.remove('open');
   $('#clienteInfo').innerHTML='CC '+CLIENTE.cedula+' · '+(CLIENTE.city||'')+' · '+CLIENTE.tipo;}
-function addLine(){LINES.push({desc:'',qty:1});renderLines()}
-function renderLines(){$('#lines').innerHTML=LINES.map((l,i)=>{
-  const opts=DB.productos.map(p=>`<option value="${p.desc}" ${p.desc===l.desc?'selected':''}>${p.desc}</option>`).join('');
-  return `<div class="line"><button class="del" onclick="delLine(${i})">×</button>
-    <label class="fld" style="margin-top:0">Producto ${i+1}</label>
-    <select class="inp" onchange="setProd(${i},this.value)"><option value="">— Selecciona —</option>${opts}</select>
-    <div class="qtyrow"><div class="q"><label class="fld">Cantidad</label>
-      <input type="number" min="1" step="1" value="${l.qty}" class="inp" onchange="setQty(${i},this.value)"></div></div></div>`;}).join('');
-  $('#totUnits').textContent=LINES.reduce((s,l)=>s+(l.desc?l.qty:0),0);}
+function addLine(){LINES.push({desc:'',qty:1,obs:''});renderLines()}
+function renderLines(){const used=LINES.map(l=>l.desc).filter(Boolean);const dis=READONLY?'disabled':'';
+  $('#lines').innerHTML=LINES.map((l,i)=>{
+    const opts=DB.productos.map(p=>{const taken=p.desc!==l.desc&&used.includes(p.desc);
+      return `<option value="${p.desc}" ${p.desc===l.desc?'selected':''} ${taken?'disabled':''}>${p.desc}${taken?' (ya agregado)':''}</option>`;}).join('');
+    return `<div class="line">${READONLY?'':`<button class="del" onclick="delLine(${i})">×</button>`}
+      <label class="fld" style="margin-top:0">Producto ${i+1}</label>
+      <select class="inp" ${dis} onchange="setProd(${i},this.value)"><option value="">— Selecciona —</option>${opts}</select>
+      <div class="qtyrow"><div class="q"><label class="fld">Cantidad</label>
+        <input type="number" min="1" step="1" value="${l.qty}" class="inp" ${dis} onchange="setQty(${i},this.value)"></div></div>
+      <label class="fld">Observación <small>(opcional)</small></label>
+      <input class="inp" ${dis} placeholder="Ej: sin azúcar, empaque especial…" value="${(l.obs||'').replace(/"/g,'&quot;')}" onchange="setObs(${i},this.value)"></div>`;}).join('');
+  $('#totUnits').textContent=LINES.reduce((s,l)=>s+(l.desc?l.qty:0),0);
+  $('#addProdBtn').style.display=READONLY?'none':'';}
 function setProd(i,d){LINES[i].desc=d;renderLines()}
 function setQty(i,v){LINES[i].qty=Math.max(1,parseInt(v)||1);renderLines()}
+function setObs(i,v){LINES[i].obs=v;}
 function delLine(i){LINES.splice(i,1);if(!LINES.length)addLine();else renderLines()}
-function nextFolio(peek){const y=new Date().getFullYear();let n=LS.get('tlx_seq',0)+1;if(!peek)LS.set('tlx_seq',n);return 'TLX-'+y+'-'+String(n).padStart(4,'0');}
-function enviarPedido(){if(!CLIENTE){toast('Selecciona un cliente');return}
+function refreshOrders(toastIt){if(!CFG.syncUrl){renderOrders();return;}
+  fetch(CFG.syncUrl).then(r=>r.json()).then(d=>{if(!Array.isArray(d))return;ALLORDERS=d;
+    const nums=d.filter(o=>/Orden de Pedido/i.test(o.folio||'')).map(o=>ordNum(o.folio));
+    NEXTNUM=(nums.length?Math.max.apply(null,nums):0)+1;
+    updateFolioHint();renderOrders();if(toastIt)toast('Órdenes actualizadas ✓');}).catch(()=>{renderOrders();});}
+function updateFolioHint(){const h=$('#folioHint');if(!h)return;
+  if(EDIT_FOLIO)h.innerHTML='<b>'+EDIT_FOLIO+'</b>'+(READONLY?' · 🔒 facturado (solo lectura)':' · editando');
+  else h.innerHTML='Solicita: '+SESSION.solicitante+' · Próxima: <b>'+fmtFolio(NEXTNUM)+'</b>';}
+function renderOrders(){const box=$('#ordersList');if(!box)return;const hoy=todayStr();
+  const list=ALLORDERS.filter(o=>String(o.fecha||o.creado||'').slice(0,10)===hoy).sort((a,b)=>ordNum(b.folio)-ordNum(a.folio));
+  box.innerHTML=list.map(o=>{const fact=(o.estado||'').toUpperCase()==='FACTURADO';const u=o.items.reduce((s,x)=>s+(+x.qty||0),0);
+    return `<div class="oitem ${o.folio===EDIT_FOLIO?'sel':''}" onclick="loadOrder('${(o.folio||'').replace(/'/g,'')}')">
+      <div class="of"><b>${o.folio}</b>${fact?'<span class="badge lock">🔒 Facturado</span>':'<span class="badge pend">Pendiente</span>'}</div>
+      <div class="oc">${o.cliente?o.cliente.nombre:''}</div>
+      <div class="ou">${o.items.length} prod · ${u} und · ${o.despachador||''}</div></div>`;}).join('')
+    ||'<div class="mini" style="padding:14px">Aún no hay órdenes hoy.</div>';}
+function loadOrder(folio){const o=ALLORDERS.find(x=>x.folio===folio);if(!o)return;
+  EDIT_FOLIO=folio;READONLY=(o.estado||'').toUpperCase()==='FACTURADO';
+  CLIENTE=DB.clientes.find(c=>String(c.cedula)===String(o.cliente.cedula))||{...o.cliente};
+  $('#clienteInput').value=o.cliente.nombre;
+  $('#clienteInfo').innerHTML='CC '+o.cliente.cedula+' · '+((CLIENTE&&CLIENTE.city)||'')+' · '+(o.cliente.tier||'');
+  LINES=o.items.map(it=>({desc:it.desc,qty:+it.qty||1,obs:it.obs||''}));if(!LINES.length)LINES=[{desc:'',qty:1,obs:''}];
+  if(o.fecha)$('#fecha').value=String(o.fecha).replace(' ','T').slice(0,16);
+  $('#pedTitle').textContent=READONLY?'Pedido (facturado)':'Editar pedido';
+  renderLines();updateFolioHint();updateSendBtn();renderOrders();
+  window.scrollTo({top:0,behavior:'smooth'});}
+function updateSendBtn(){const b=$('#btnSend'),ln=$('#lockNote');if(!b)return;
+  if(READONLY){b.style.display='none';if(ln)ln.style.display='block';}
+  else{b.style.display='';b.textContent=EDIT_FOLIO?'GUARDAR CAMBIOS':'ENVIAR PEDIDO';if(ln)ln.style.display='none';}}
+function enviarPedido(){if(READONLY)return;if(!CLIENTE){toast('Selecciona un cliente');return}
   const valid=LINES.filter(l=>l.desc&&l.qty>0);if(!valid.length){toast('Agrega al menos un producto');return}
   const tier=tierOf(CLIENTE);
-  const items=valid.map(l=>{const p=DB.productos.find(x=>x.desc===l.desc);const unit=p?p.base[tier]:0;return{desc:l.desc,qty:l.qty,unit:unit,total:unit*l.qty};});
+  const items=valid.map(l=>{const p=DB.productos.find(x=>x.desc===l.desc);const unit=p?p.base[tier]:0;return{desc:l.desc,qty:l.qty,unit:unit,total:unit*l.qty,obs:l.obs||''};});
   const subtotal=Math.round(items.reduce((s,x)=>s+x.total,0));
   const icui=Math.round(subtotal*ICUI),iva=Math.round(subtotal*IVA),total=subtotal+icui+iva;
-  const folio=nextFolio(false);
+  const editing=!!EDIT_FOLIO;const folio=editing?EDIT_FOLIO:fmtFolio(NEXTNUM);
   const order={folio,fecha:$('#fecha').value,creado:new Date().toISOString(),solicitante:SESSION.solicitante,despachador:SESSION.despachador,
     cliente:{...CLIENTE,tier},items,subtotal,icui,iva,total};
-  const all=LS.get('tlx_orders',[]);all.push(order);LS.set('tlx_orders',all);
-  if(CFG.syncUrl){try{fetch(CFG.syncUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(order)}).catch(()=>{});}catch(e){}}
-  showConfirm(order);}
-function showConfirm(o){ // SIN precios para el despachador
-  const items=o.items.map(it=>`<div class="it"><span>${it.desc}</span><b>${it.qty} und</b></div>`).join('');
-  $('#modal').innerHTML=`<div class="mh"><b>Pedido enviado</b><button class="x" onclick="closeModal()">×</button></div>
+  const payload=editing?Object.assign({action:'updatePedido'},order):order;
+  if(CFG.syncUrl){try{fetch(CFG.syncUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)}).catch(()=>{});}catch(e){}}
+  const all=LS.get('tlx_orders',[]);const ix=all.findIndex(x=>x.folio===folio);if(ix>=0)all[ix]=order;else all.push(order);LS.set('tlx_orders',all);
+  setTimeout(function(){refreshOrders();},1400);
+  showConfirm(order,editing);}
+function showConfirm(o,editing){ // SIN precios para el despachador
+  const items=o.items.map(it=>`<div class="it"><span>${it.desc}${it.obs?'<br><small style="color:var(--muted)">'+it.obs+'</small>':''}</span><b>${it.qty} und</b></div>`).join('');
+  $('#modal').innerHTML=`<div class="mh"><b>${editing?'Pedido actualizado':'Pedido enviado'}</b><button class="x" onclick="closeModal()">×</button></div>
     <div class="rc"><div class="ok-check">✓</div>
     <div style="text-align:center;margin-bottom:6px"><b style="color:var(--cacao-700);font-size:18px">${o.folio}</b></div>
     <div style="text-align:center;color:var(--muted);font-size:13px;margin-bottom:14px">${o.cliente.nombre}</div>
     ${items}
     <div class="it" style="border:none;margin-top:6px"><span>Total unidades</span><b>${o.items.reduce((s,x)=>s+x.qty,0)} und</b></div></div>
-    <div class="mfoot"><button class="btn btn-primary" onclick="closeModal();nuevoPedido()">＋ Otro pedido</button></div>`;
+    <div class="mfoot"><button class="btn btn-primary" onclick="closeModal();nuevoPedido()">＋ Otra orden</button></div>`;
   $('#overlay').classList.add('open');}
-function nuevoPedido(){CLIENTE=null;LINES=[];$('#clienteInput').value='';$('#clienteInfo').textContent='';$('#folioHint').textContent='Solicita: '+SESSION.solicitante+' · Próximo folio: '+nextFolio(true);addLine();window.scrollTo(0,0)}
+function nuevoPedido(){EDIT_FOLIO=null;READONLY=false;CLIENTE=null;LINES=[];
+  $('#clienteInput').value='';$('#clienteInfo').textContent='';$('#pedTitle').textContent='Nuevo pedido';
+  const n=new Date();n.setMinutes(n.getMinutes()-n.getTimezoneOffset());$('#fecha').value=n.toISOString().slice(0,16);
+  addLine();updateFolioHint();updateSendBtn();renderOrders();window.scrollTo(0,0);}
 function openLists(){const pl=(a,k)=>a.map((x,i)=>`<span class="pill">${x}<button onclick="rmItem('${k}',${i})">×</button></span>`).join('');
   $('#modal').innerHTML=`<div class="mh"><b>Gestionar listas</b><button class="x" onclick="closeModal()">×</button></div>
     <div style="padding:20px"><label class="fld" style="margin-top:0">Solicitantes</label>

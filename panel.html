@@ -165,12 +165,19 @@ const $=s=>document.querySelector(s);
 const MES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const LS={get:(k,d)=>{try{const v=localStorage.getItem(k);return v===null?d:JSON.parse(v)}catch(e){return d}},set:(k,v)=>localStorage.setItem(k,JSON.stringify(v))};
 const ICUI=0.20,IVA=0.05;
-let ORDERS=[],DEMO=false,CURMONTH=null,VIEW='list';
+let ORDERS=[],DEMO=false,CURMONTH=null,VIEW='list',FACTURADORES=[];
 const DEFAULT_SYNC='https://script.google.com/macros/s/AKfycbysly2NjPXQAUqwrxjn8Qwb4KS3RFxsI0OtPPcz-58ZpRYn1Zx3_QqAPWtQI3XZE24vvg/exec';
 function syncUrl(){return ((LS.get('tlx_cfg',{})||{}).syncUrl)||DEFAULT_SYNC}
 function autoLoadDrive(){const u=syncUrl();if(!u)return;
   fetch(u).then(r=>r.json()).then(d=>{if(Array.isArray(d)&&d.length){ORDERS=d;DEMO=false;const b=$('#demoBanner');if(b)b.style.display='none';
-    ORDERS.forEach(taxes);LS.set('tlx_orders',d);CURMONTH=null;ORDERS.sort((a,b)=>new Date(b.fecha||b.creado)-new Date(a.fecha||a.creado));buildMonths();}}).catch(()=>{});}
+    ORDERS.forEach(taxes);LS.set('tlx_orders',d);CURMONTH=null;ORDERS.sort((a,b)=>new Date(b.fecha||b.creado)-new Date(a.fecha||a.creado));buildMonths();}}).catch(()=>{});
+  loadCatalogPanel();}
+function loadCatalogPanel(){const u=syncUrl();if(!u)return;const sep=u.indexOf('?')>=0?'&':'?';
+  fetch(u+sep+'resource=catalogo').then(r=>r.json()).then(cat=>{if(!cat)return;
+    if(cat.clientes&&cat.clientes.length)DBP.clientes=cat.clientes;if(cat.productos&&cat.productos.length)DBP.productos=cat.productos;
+    FACTURADORES=cat.facturadores||[];}).catch(()=>{});}
+function facturado(o){return String(o.estado||'').toUpperCase()==='FACTURADO';}
+function cityOf(o){const c=DBP.clientes.find(x=>String(x.cedula)===String(o.cliente.cedula));return (c&&c.city)||o.cliente.city||'';}
 function mk(o){const d=new Date(o.fecha||o.creado);return isNaN(d)?'0000-00':d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')}
 function mName(k){const[y,m]=k.split('-');return MES[parseInt(m)-1]+' '+y}
 function taxes(o){ // compat: recalcula si faltan
@@ -206,7 +213,8 @@ function renderList(){const q=($('#q').value||'').toLowerCase().trim();let list=
   if(q)list=list.filter(o=>(o.folio||'').toLowerCase().includes(q)||o.cliente.nombre.toLowerCase().includes(q)||(o.cliente.cedula||'').includes(q)||o.items.some(i=>i.desc.toLowerCase().includes(q)));
   $('#monthLabel').textContent=CURMONTH?mName(CURMONTH):'—';
   $('#rows').innerHTML=list.map(o=>{const gi=ORDERS.indexOf(o);const f=new Date(o.fecha||o.creado);
-    return `<tr onclick="openInvoice(${gi})"><td class="folio">${o.folio}</td>
+    const fb=facturado(o)?' <span style="font-size:10px;background:#ece5db;color:#8a6f5c;padding:1px 6px;border-radius:6px;font-weight:800">🔒 FACT</span>':'';
+    return `<tr onclick="openInvoice(${gi})"><td class="folio">${o.folio}${fb}</td>
       <td>${isNaN(f)?'—':f.toLocaleDateString('es-CO',{day:'2-digit',month:'short'})}</td>
       <td>${o.cliente.nombre}</td><td>${o.solicitante||'—'}</td><td>${o.despachador||'—'}</td>
       <td><span class="tag ${o.cliente.tier||'COMERCIAL'}">${o.cliente.tier||'—'}</span></td>
@@ -267,9 +275,10 @@ function drawDoughnut(id,labels,data,onClick){if(charts[id])charts[id].destroy()
     options:{plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:c=>' '+c.label+': '+fmtMetric(c.parsed)}}},onClick:(e,el)=>{if(onClick&&el.length)onClick(labels[el[0].index])}}});}
 
 /* ---- Invoice ---- */
-function invoiceHTML(o){taxes(o);const rows=o.items.map(it=>`<tr><td>${it.desc}</td><td class="r">${it.qty}</td><td class="r">${money(it.unit)}</td><td class="r">${money(it.total)}</td></tr>`).join('');
+function invoiceHTML(o){taxes(o);const rows=o.items.map(it=>`<tr><td>${it.desc}${it.obs?'<br><small style="color:#999">📝 '+it.obs+'</small>':''}</td><td class="r">${it.qty}</td><td class="r">${money(it.unit)}</td><td class="r">${money(it.total)}</td></tr>`).join('');
   const f=new Date(o.fecha||o.creado);
-  return `<div class="inv" id="invoicePrint"><div class="ih"><div class="co"><img src="logo.jpeg" alt="TOLIMAX"><b>${EMP.nombre}</b><small>${EMP.dir}<br>Tel: ${EMP.tel} · ${EMP.mail}</small></div>
+  const fact=facturado(o)?`<div style="background:#2E7D46;color:#fff;padding:8px 12px;border-radius:8px;font-weight:800;margin-bottom:12px">✔ FACTURADO${o.facturador?' · por '+o.facturador:''}${o.fechaFactura?' · '+o.fechaFactura:''}</div>`:'';
+  return `<div class="inv" id="invoicePrint">${fact}<div class="ih"><div class="co"><img src="logo.jpeg" alt="TOLIMAX"><b>${EMP.nombre}</b><small>${EMP.dir}<br>Tel: ${EMP.tel} · ${EMP.mail}</small></div>
     <div style="text-align:right"><div class="num">${o.folio}</div><small style="display:block;margin-top:6px;color:#777">${isNaN(f)?'':f.toLocaleString('es-CO',{dateStyle:'medium',timeStyle:'short'})}</small></div></div>
     <div class="party"><div><h4>Cliente</h4><b>${o.cliente.nombre}</b><br><small style="color:#666">CC/NIT ${o.cliente.cedula}<br>${o.cliente.dir||''}<br>${o.cliente.city||''} · Tel: ${o.cliente.tel||'—'}<br>Pago: <b>${o.cliente.pago||'—'}</b></small></div>
     <div style="text-align:right"><h4>Pedido</h4><small style="color:#666">Lista: <b>${o.cliente.tier}</b><br>Solicitante: ${o.solicitante||'—'}<br>Despachador: ${o.despachador||'—'}</small></div></div>
@@ -278,11 +287,38 @@ function invoiceHTML(o){taxes(o);const rows=o.items.map(it=>`<tr><td>${it.desc}<
     <tr><td colspan="2"></td><td class="r">ICUI (20%)</td><td class="r">${money(o.icui)}</td></tr>
     <tr><td colspan="2"></td><td class="r">IVA (5%)</td><td class="r">${money(o.iva)}</td></tr>
     <tr class="t"><td colspan="2"></td><td class="r">TOTAL</td><td class="r">${money(o.total)}</td></tr></tfoot></table>
+    ${o.obsFactura?`<div style="margin-top:12px;font-size:12.5px;color:#555;background:#f7f2e9;border-radius:8px;padding:10px 12px"><b>Observación de facturación:</b> ${o.obsFactura}</div>`:''}
     <div class="note">Los valores unitarios corresponden al <b>subtotal (base)</b>; el ICUI (impuesto a ultraprocesados, 20%) y el IVA (5%) se liquidan al final. Lista de precios <b>${o.cliente.tier}</b>. Pre-factura / orden de producción interna.</div></div>`;}
 function openInvoice(gi){const o=ORDERS[gi];window._inv=o;
-  $('#modal').innerHTML=`<div class="mh"><b>Factura · ${o.folio}</b><button class="x" onclick="closeModal()">×</button></div><div>${invoiceHTML(o)}</div>
-    <div class="mfoot"><button class="btn btn-primary" onclick="window.print()">🖨 Imprimir / PDF</button><button class="btn btn-ghost" onclick="dl('${o.folio}')">⬇ Descargar</button></div>`;
+  const facBtn=facturado(o)?`<button class="btn btn-ghost" disabled style="opacity:.6">🔒 Facturado</button>`:`<button class="btn" style="background:var(--ok);color:#fff" onclick="openFacturar(${gi})">🧾 Facturar</button>`;
+  $('#modal').innerHTML=`<div class="mh"><b>Pedido · ${o.folio}</b><button class="x" onclick="closeModal()">×</button></div><div>${invoiceHTML(o)}</div>
+    <div class="mfoot"><button class="btn btn-primary" onclick="window.print()">🖨 Imprimir</button><button class="btn btn-ghost" onclick="dl('${o.folio}')">⬇ Descargar</button>${facBtn}</div>`;
   $('#overlay').classList.add('open');}
+/* ---- Facturar (bloquea el pedido) ---- */
+function openFacturar(gi){const o=ORDERS[gi];const opts=FACTURADORES.map(f=>`<option>${f}</option>`).join('');
+  $('#modal').innerHTML=`<div class="mh"><b>Facturar · ${o.folio}</b><button class="x" onclick="openInvoice(${gi})">←</button></div>
+   <div class="frm" style="padding:20px">
+     <div style="background:#FFF7E8;border:1px solid var(--gold-soft);color:#8a6a1f;border-radius:10px;padding:10px 12px;font-size:13px;margin-bottom:14px">
+       Cliente: <b>${o.cliente.nombre}</b> · Total: <b>${money(o.total)}</b>.<br>Al facturar, el pedido <b>se bloquea</b> y no se podrá editar.</div>
+     <label>¿Quién factura?</label>
+     <div style="display:flex;gap:8px"><select id="fSel" style="flex:1">${opts||'<option value="">(agrega uno →)</option>'}</select>
+       <input id="fNew" placeholder="o nuevo…" style="width:130px"><button class="btn btn-ghost" style="flex:none;padding:0 12px" onclick="addFacturadorQuick()">＋</button></div>
+     <label style="margin-top:12px">Observaciones (opcional)</label>
+     <textarea id="fObs" rows="3" style="width:100%;padding:11px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:14px;font-family:inherit"></textarea>
+   </div>
+   <div class="mfoot"><button class="btn btn-ghost" onclick="openInvoice(${gi})">Cancelar</button>
+     <button class="btn" style="background:var(--ok);color:#fff" onclick="confirmarFactura(${gi})">✔ Confirmar facturación</button></div>`;
+  $('#overlay').classList.add('open');}
+function addFacturadorQuick(){const v=$('#fNew').value.trim();if(!v)return;if(FACTURADORES.indexOf(v)<0)FACTURADORES.push(v);
+  postDrive({action:'addFacturador',nombre:v});const sel=$('#fSel');sel.innerHTML=FACTURADORES.map(f=>`<option>${f}</option>`).join('');sel.value=v;$('#fNew').value='';toast('Facturador agregado ✓');}
+function confirmarFactura(gi){const o=ORDERS[gi];const sel=$('#fSel');const nw=$('#fNew').value.trim();
+  const fact=nw||(sel?sel.value:'');if(!fact){toast('Indica quién factura');return}
+  if(!confirm('¿Seguro de facturar '+o.folio+'?\nQuedará bloqueado y no se podrá editar.'))return;
+  if(nw&&FACTURADORES.indexOf(nw)<0){FACTURADORES.push(nw);postDrive({action:'addFacturador',nombre:nw});}
+  const obs=$('#fObs').value.trim();
+  postDrive({action:'facturar',folio:o.folio,facturador:fact,obs:obs});
+  o.estado='FACTURADO';o.facturador=fact;o.fechaFactura=new Date().toLocaleString('es-CO');o.obsFactura=obs;
+  LS.set('tlx_orders',ORDERS);toast('Pedido facturado 🔒');renderAll();openInvoice(gi);}
 function dl(folio){const o=window._inv;const html='<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+folio+'</title><style>'+document.querySelector('style').textContent+'</style></head><body style="background:#fff"><div class="wrap">'+invoiceHTML(o)+'</div></body></html>';
   const b=new Blob([html],{type:'text/html'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='Factura_'+folio+'.html';a.click()}
 function closeModal(){$('#overlay').classList.remove('open')}
@@ -360,15 +396,16 @@ function saveProductoForm(isEdit){const desc=$('#p_desc').value.trim();if(!desc)
   if(isEdit&&PROD_EDIT!=null)DBP.productos[PROD_EDIT]=prod;else DBP.productos.push(prod);
   postDrive(payload);toast('Producto guardado ✓');openProductos();}
 /* ---- Añadir solicitante / despachador (escribe a Drive) ---- */
-function openAddPersonas(){$('#modal').innerHTML=`<div class="mh"><b>Añadir solicitante / despachador</b><button class="x" onclick="closeModal()">×</button></div>
+function openAddPersonas(){$('#modal').innerHTML=`<div class="mh"><b>Añadir personas</b><button class="x" onclick="closeModal()">×</button></div>
   <div class="frm" style="padding:20px">
     <label>Nuevo solicitante</label><div style="display:flex;gap:8px"><input id="p_sol"><button class="btn btn-ghost" style="flex:none;padding:0 16px" onclick="addPersona('addSolicitante','p_sol')">Añadir</button></div>
     <label style="margin-top:14px">Nuevo despachador</label><div style="display:flex;gap:8px"><input id="p_des"><button class="btn btn-ghost" style="flex:none;padding:0 16px" onclick="addPersona('addDespachador','p_des')">Añadir</button></div>
-    <div class="hint" style="margin-top:10px">Se guardan en las hojas TOLIMAX_solicitantes / TOLIMAX_despachadores de Drive y aparecerán en la app en el próximo "Actualizar base".</div></div>
+    <label style="margin-top:14px">Nuevo facturador</label><div style="display:flex;gap:8px"><input id="p_fac"><button class="btn btn-ghost" style="flex:none;padding:0 16px" onclick="addPersona('addFacturador','p_fac')">Añadir</button></div>
+    <div class="hint" style="margin-top:10px">Se guardan en las hojas TOLIMAX_solicitantes / _despachadores / _facturadores de Drive y aparecerán en las listas.</div></div>
   <div class="mfoot"><button class="btn btn-primary" onclick="closeModal()">Cerrar</button></div>`;
   $('#overlay').classList.add('open');}
 function addPersona(action,id){const v=$('#'+id).value.trim();if(!v){toast('Escribe un nombre');return}
-  postDrive({action,nombre:v});$('#'+id).value='';toast('Guardado en Drive ✓');}
+  postDrive({action,nombre:v});if(action==='addFacturador'&&FACTURADORES.indexOf(v)<0)FACTURADORES.push(v);$('#'+id).value='';toast('Guardado en Drive ✓');}
 function postDrive(payload){const u=syncUrl();if(!u){toast('Conecta Drive primero (⚙ en la app)');return}
   try{fetch(u,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)}).catch(()=>{});}catch(e){}}
 
@@ -387,9 +424,9 @@ function loadFromDrive(){const u=syncUrl()||prompt('Pega la URL del script de Dr
   fetch(u).then(r=>r.json()).then(d=>{if(!Array.isArray(d))throw 0;ORDERS=d;DEMO=false;$('#demoBanner').style.display='none';ORDERS.forEach(taxes);LS.set('tlx_orders',d);CURMONTH=null;
     ORDERS.sort((a,b)=>new Date(b.fecha||b.creado)-new Date(a.fecha||a.creado));buildMonths();toast(d.length+' pedidos de Drive ✓');}).catch(e=>toast('No se pudo cargar. Revisa URL/permisos.'));}
 function exportMonth(){const mo=monthOrders();if(!mo.length){toast('Nada que exportar');return}
-  const head=['Folio','Fecha','Solicitante','Despachador','Cedula','Cliente','Lista','Producto','Cantidad','Subtotal.Unit','Subtotal.Linea','Subtotal','ICUI 20%','IVA 5%','Total'];
+  const head=['Folio','Fecha','Solicitante','Despachador','Cedula','Cliente','Ciudad','Lista','Producto','Obs','Cantidad','Subtotal.Unit','Subtotal.Linea','Subtotal','ICUI 20%','IVA 5%','Total','Estado','Facturador'];
   const rows=[head.join(';')];
-  mo.forEach(o=>o.items.forEach(it=>rows.push([o.folio,o.fecha,o.solicitante||'',o.despachador||'','"'+o.cliente.cedula+'"','"'+o.cliente.nombre+'"',o.cliente.tier,'"'+it.desc+'"',it.qty,it.unit,it.total,o.subtotal,o.icui,o.iva,o.total].join(';'))));
+  mo.forEach(o=>o.items.forEach(it=>rows.push([o.folio,o.fecha,o.solicitante||'',o.despachador||'','"'+o.cliente.cedula+'"','"'+o.cliente.nombre+'"','"'+cityOf(o)+'"',o.cliente.tier,'"'+it.desc+'"','"'+(it.obs||'')+'"',it.qty,it.unit,it.total,o.subtotal,o.icui,o.iva,o.total,o.estado||'PENDIENTE','"'+(o.facturador||'')+'"'].join(';'))));
   const b=new Blob(['﻿'+rows.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='TOLIMAX_'+CURMONTH+'.csv';a.click();}
 function clearDemo(){ORDERS=[];DEMO=false;$('#demoBanner').style.display='none';CURMONTH=null;buildMonths();}
 let tt;function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),2500)}
