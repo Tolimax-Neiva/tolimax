@@ -128,7 +128,7 @@ table.orders tbody tr{cursor:pointer}table.orders tbody tr:hover{background:var(
     <div class="panel">
       <div class="toparea"><input class="search" id="q" placeholder="🔎 Buscar folio, cliente, cédula, producto…" oninput="renderList()">
         <span class="tbtn" style="color:var(--cacao-600);background:var(--cream)" id="monthLabel"></span></div>
-      <table class="orders"><thead><tr><th>Folio</th><th>Fecha</th><th>Cliente</th><th>Solicitante</th><th>Despachador</th><th>Lista</th><th style="text-align:right">Total</th></tr></thead>
+      <table class="orders"><thead><tr><th>Folio</th><th>Fecha</th><th>Cliente</th><th>Solicitante</th><th>Despachador</th><th>Lista</th><th style="text-align:center">Estado</th><th style="text-align:right">Total</th></tr></thead>
         <tbody id="rows"></tbody></table>
       <div class="empty" id="empty" style="display:none">Sin pedidos para mostrar.</div>
     </div>
@@ -213,11 +213,12 @@ function renderList(){const q=($('#q').value||'').toLowerCase().trim();let list=
   if(q)list=list.filter(o=>(o.folio||'').toLowerCase().includes(q)||o.cliente.nombre.toLowerCase().includes(q)||(o.cliente.cedula||'').includes(q)||o.items.some(i=>i.desc.toLowerCase().includes(q)));
   $('#monthLabel').textContent=CURMONTH?mName(CURMONTH):'—';
   $('#rows').innerHTML=list.map(o=>{const gi=ORDERS.indexOf(o);const f=new Date(o.fecha||o.creado);
-    const fb=facturado(o)?' <span style="font-size:10px;background:#ece5db;color:#8a6f5c;padding:1px 6px;border-radius:6px;font-weight:800">🔒 FACT</span>':'';
-    return `<tr onclick="openInvoice(${gi})"><td class="folio">${o.folio}${fb}</td>
+    const est=facturado(o)?'<span style="color:#2E7D46;font-weight:800;white-space:nowrap">✓ Facturado</span>':'<span style="color:#b06a5c;font-weight:700;white-space:nowrap">✗ Pendiente</span>';
+    return `<tr onclick="openInvoice(${gi})"><td class="folio">${o.folio}</td>
       <td>${isNaN(f)?'—':f.toLocaleDateString('es-CO',{day:'2-digit',month:'short'})}</td>
       <td>${o.cliente.nombre}</td><td>${o.solicitante||'—'}</td><td>${o.despachador||'—'}</td>
       <td><span class="tag ${o.cliente.tier||'COMERCIAL'}">${o.cliente.tier||'—'}</span></td>
+      <td style="text-align:center">${est}</td>
       <td class="tot">${money(o.total)}</td></tr>`;}).join('');
   $('#empty').style.display=list.length?'none':'block';}
 function topProd(){const mo=monthOrders();const agg={};mo.forEach(o=>o.items.forEach(it=>agg[it.desc]=(agg[it.desc]||0)+it.qty));
