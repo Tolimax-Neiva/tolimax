@@ -40,11 +40,11 @@ body{font-family:'Segoe UI',system-ui,-apple-system,Roboto,Arial,sans-serif;back
 .search:focus{border-color:var(--gold)}
 table.orders{width:100%;border-collapse:collapse}
 .orders-scroll{overflow-x:auto}
-table.orders{min-width:720px}
+table.orders{min-width:760px;table-layout:fixed}
 table.orders th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:11px 9px;border-bottom:1px solid var(--line);white-space:nowrap}
-table.orders td{padding:11px 9px;border-bottom:1px solid #f1e8da;font-size:13.5px}
-table.orders td.folio{white-space:nowrap}
-table.orders th:last-child,table.orders td.tot{padding-right:16px}
+table.orders td{padding:11px 9px;border-bottom:1px solid #f1e8da;font-size:13.5px;overflow-wrap:anywhere;word-break:break-word}
+table.orders col.c-cli{width:22%}table.orders col.c-fol{width:12%}table.orders col.c-fec{width:8%}table.orders col.c-per{width:14%}table.orders col.c-lis{width:9%}table.orders col.c-est{width:10%}table.orders col.c-tot{width:11%}
+table.orders td.tot,table.orders th:last-child{text-align:right;white-space:nowrap;padding-right:16px}
 table.orders tbody tr{cursor:pointer}table.orders tbody tr:hover{background:var(--cream)}
 .folio{font-weight:800;color:var(--cacao-700);font-family:ui-monospace,monospace;font-size:13px}
 .tot{font-weight:800;color:var(--cacao-700);text-align:right}
@@ -132,7 +132,7 @@ table.orders tbody tr{cursor:pointer}table.orders tbody tr:hover{background:var(
     <div class="panel">
       <div class="toparea"><input class="search" id="q" placeholder="🔎 Buscar folio, cliente, cédula, producto…" oninput="renderList()">
         <span class="tbtn" style="color:var(--cacao-600);background:var(--cream)" id="monthLabel"></span></div>
-      <div class="orders-scroll"><table class="orders"><thead><tr><th>Folio</th><th>Fecha</th><th>Cliente</th><th>Solicitante</th><th>Despachador</th><th>Lista</th><th style="text-align:center">Estado</th><th style="text-align:right">Total</th></tr></thead>
+      <div class="orders-scroll"><table class="orders"><colgroup><col class="c-fol"><col class="c-fec"><col class="c-cli"><col class="c-per"><col class="c-per"><col class="c-lis"><col class="c-est"><col class="c-tot"></colgroup><thead><tr><th>Folio</th><th>Fecha</th><th>Cliente</th><th>Solicitante</th><th>Despachador</th><th>Lista</th><th style="text-align:center">Estado</th><th style="text-align:right">Total</th></tr></thead>
         <tbody id="rows"></tbody></table></div>
       <div class="empty" id="empty" style="display:none">Sin pedidos para mostrar.</div>
     </div>
