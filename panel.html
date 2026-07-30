@@ -175,11 +175,11 @@ let ORDERS=[],DEMO=false,CURMONTH=null,VIEW='list',FACTURADORES=[];
 const DEFAULT_SYNC='https://script.google.com/macros/s/AKfycbysly2NjPXQAUqwrxjn8Qwb4KS3RFxsI0OtPPcz-58ZpRYn1Zx3_QqAPWtQI3XZE24vvg/exec';
 function syncUrl(){return ((LS.get('tlx_cfg',{})||{}).syncUrl)||DEFAULT_SYNC}
 function autoLoadDrive(){const u=syncUrl();if(!u)return;
-  fetch(u).then(r=>r.json()).then(d=>{if(Array.isArray(d)&&d.length){ORDERS=d;DEMO=false;const b=$('#demoBanner');if(b)b.style.display='none';
+  fetch(u+(u.indexOf('?')>=0?'&':'?')+'t='+Date.now(),{cache:'no-store'}).then(r=>r.json()).then(d=>{if(Array.isArray(d)&&d.length){ORDERS=d;DEMO=false;const b=$('#demoBanner');if(b)b.style.display='none';
     ORDERS.forEach(taxes);LS.set('tlx_orders',d);CURMONTH=null;ORDERS.sort((a,b)=>new Date(b.fecha||b.creado)-new Date(a.fecha||a.creado));buildMonths();}}).catch(()=>{});
   loadCatalogPanel();}
 function loadCatalogPanel(){const u=syncUrl();if(!u)return;const sep=u.indexOf('?')>=0?'&':'?';
-  fetch(u+sep+'resource=catalogo').then(r=>r.json()).then(cat=>{if(!cat)return;
+  fetch(u+sep+'resource=catalogo&t='+Date.now(),{cache:'no-store'}).then(r=>r.json()).then(cat=>{if(!cat)return;
     if(cat.clientes&&cat.clientes.length)DBP.clientes=cat.clientes;if(cat.productos&&cat.productos.length)DBP.productos=cat.productos;
     FACTURADORES=cat.facturadores||[];}).catch(()=>{});}
 function facturado(o){return String(o.estado||'').toUpperCase()==='FACTURADO';}
@@ -428,7 +428,7 @@ function parseCSV(txt){const lines=txt.replace(/^﻿/,'').split(/\r?\n/).filter(
     by[folio].items.push({desc:(prod||'').replace(/^"|"$/g,''),qty:+qty,unit:+unit,total:+ltot});});return Object.values(by);}
 function splitCSV(l){const o=[];let c='',q=false;for(const ch of l){if(ch==='"')q=!q;else if(ch===';'&&!q){o.push(c);c=''}else c+=ch}o.push(c);return o}
 function loadFromDrive(){const u=syncUrl()||prompt('Pega la URL del script de Drive (Apps Script):');if(!u)return;toast('Cargando…');
-  fetch(u).then(r=>r.json()).then(d=>{if(!Array.isArray(d))throw 0;ORDERS=d;DEMO=false;$('#demoBanner').style.display='none';ORDERS.forEach(taxes);LS.set('tlx_orders',d);CURMONTH=null;
+  fetch(u+(u.indexOf('?')>=0?'&':'?')+'t='+Date.now(),{cache:'no-store'}).then(r=>r.json()).then(d=>{if(!Array.isArray(d))throw 0;ORDERS=d;DEMO=false;$('#demoBanner').style.display='none';ORDERS.forEach(taxes);LS.set('tlx_orders',d);CURMONTH=null;
     ORDERS.sort((a,b)=>new Date(b.fecha||b.creado)-new Date(a.fecha||a.creado));buildMonths();toast(d.length+' pedidos de Drive ✓');}).catch(e=>toast('No se pudo cargar. Revisa URL/permisos.'));}
 function exportMonth(){const mo=monthOrders();if(!mo.length){toast('Nada que exportar');return}
   const head=['Folio','Fecha','Solicitante','Despachador','Cedula','Cliente','Ciudad','Lista','Producto','Obs','Cantidad','V.Unit','Subtotal','ICUI 20%','IVA 5%','Total','Estado','Facturador'];

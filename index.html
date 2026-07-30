@@ -228,7 +228,7 @@ function applyCatalog(cat){if(!cat)return;
 function syncPeople(){if(!CATLOADED){SOL=CFG.solicitantes.slice();DES=CFG.despachadores.slice();}}
 function loadCatalog(silent){if(!CFG.syncUrl){if(!silent)toast('Primero pega la URL de Drive');return}
   const sep=CFG.syncUrl.indexOf('?')>=0?'&':'?';
-  fetch(CFG.syncUrl+sep+'resource=catalogo').then(r=>r.json()).then(cat=>{applyCatalog(cat);fillPeople();
+  fetch(CFG.syncUrl+sep+'resource=catalogo&t='+Date.now(),{cache:'no-store'}).then(r=>r.json()).then(cat=>{applyCatalog(cat);fillPeople();
     if(!silent)toast('Base actualizada: '+DB.clientes.length+' clientes ✓');}).catch(e=>{if(!silent)toast('No se pudo leer la base.')});}
 function fillPeople(){$('#solicitante').innerHTML=SOL.map(x=>`<option>${x}</option>`).join('');
   $('#despachador').innerHTML=DES.map(x=>`<option>${x}</option>`).join('');}
@@ -236,7 +236,7 @@ function aceptar(){const sol=$('#solicitante').value,des=$('#despachador').value
   if(!sol||!des){toast('Selecciona solicitante y despachador');return}
   const btn=$('#btnAcceso');btn.disabled=true;btn.textContent='Verificando…';
   const sep=CFG.syncUrl.indexOf('?')>=0?'&':'?';
-  fetch(CFG.syncUrl+sep+'login=1&user='+encodeURIComponent(sol)+'&pass='+encodeURIComponent(clave))
+  fetch(CFG.syncUrl+sep+'login=1&user='+encodeURIComponent(sol)+'&pass='+encodeURIComponent(clave)+'&t='+Date.now(),{cache:'no-store'})
     .then(r=>r.json()).then(res=>{btn.disabled=false;btn.textContent='INGRESAR';
       if(!res||!res.ok){toast('Contraseña incorrecta');$('#clave').focus();return;}
       SESSION.solicitante=sol;SESSION.despachador=des;entrarPedidos();})
@@ -276,7 +276,7 @@ function setQty(i,v){LINES[i].qty=Math.max(1,parseInt(v)||1);renderLines()}
 function setObs(i,v){LINES[i].obs=v;}
 function delLine(i){LINES.splice(i,1);if(!LINES.length)addLine();else renderLines()}
 function refreshOrders(toastIt){if(!CFG.syncUrl){renderOrders();return;}
-  fetch(CFG.syncUrl).then(r=>r.json()).then(d=>{if(!Array.isArray(d))return;ALLORDERS=d;
+  fetch(CFG.syncUrl+(CFG.syncUrl.indexOf('?')>=0?'&':'?')+'t='+Date.now(),{cache:'no-store'}).then(r=>r.json()).then(d=>{if(!Array.isArray(d))return;ALLORDERS=d;
     const nums=d.filter(o=>/Orden de Pedido/i.test(o.folio||'')).map(o=>ordNum(o.folio));
     NEXTNUM=(nums.length?Math.max.apply(null,nums):0)+1;
     updateFolioHint();renderOrders();if(toastIt)toast('Órdenes actualizadas ✓');}).catch(()=>{renderOrders();});}
