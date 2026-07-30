@@ -157,13 +157,15 @@ body.ordering #bgvid,body.ordering #bgvid-ov{opacity:0;pointer-events:none}
 
   <div id="screen1" class="card">
     <h1>Iniciar turno</h1>
-    <div class="subt">Selecciona quién solicita y quién despacha.</div>
+    <div class="subt">Ingresa como solicitante y elige el despachador.</div>
     <label class="fld">Solicitante</label>
     <select id="solicitante" class="inp"></select>
+    <label class="fld">Contraseña</label>
+    <input id="clave" type="password" class="inp" placeholder="Tu contraseña" autocomplete="current-password">
     <label class="fld">Despachador</label>
     <select id="despachador" class="inp"></select>
     <div style="height:18px"></div>
-    <button class="btn btn-primary" onclick="aceptar()">ACEPTAR</button>
+    <button class="btn btn-primary" id="btnAcceso" onclick="aceptar()">INGRESAR</button>
     <div class="toolbar"><span class="link" onclick="openLists()">✎ Gestionar listas</span>
       <span class="link" onclick="openSettings()">⚙ Configuración / Drive</span></div>
   </div>
@@ -187,6 +189,7 @@ body.ordering #bgvid,body.ordering #bgvid-ov{opacity:0;pointer-events:none}
     <div style="height:14px"></div>
     <div id="lockNote">🔒 Pedido facturado — solo lectura</div>
     <button class="btn btn-primary" id="btnSend" onclick="enviarPedido()">ENVIAR PEDIDO</button>
+    <button class="btn" id="btnDel" style="display:none;background:#fbeee9;color:var(--danger);width:100%;margin-top:8px;border:1.5px solid #f0c9c0" onclick="eliminarPedido()">🗑 Eliminar pedido</button>
     <div class="toolbar"><span class="link" onclick="nuevoPedido()">＋ Nueva orden</span>
       <span class="link" onclick="volver()">← Cambiar solicitante/despachador</span></div>
    </div>
@@ -229,12 +232,20 @@ function loadCatalog(silent){if(!CFG.syncUrl){if(!silent)toast('Primero pega la 
     if(!silent)toast('Base actualizada: '+DB.clientes.length+' clientes ✓');}).catch(e=>{if(!silent)toast('No se pudo leer la base.')});}
 function fillPeople(){$('#solicitante').innerHTML=SOL.map(x=>`<option>${x}</option>`).join('');
   $('#despachador').innerHTML=DES.map(x=>`<option>${x}</option>`).join('');}
-function aceptar(){SESSION.solicitante=$('#solicitante').value;SESSION.despachador=$('#despachador').value;
-  if(!SESSION.solicitante||!SESSION.despachador){toast('Selecciona ambos');return}
-  $('#whoChip').textContent=SESSION.despachador;
+function aceptar(){const sol=$('#solicitante').value,des=$('#despachador').value,clave=$('#clave').value;
+  if(!sol||!des){toast('Selecciona solicitante y despachador');return}
+  const btn=$('#btnAcceso');btn.disabled=true;btn.textContent='Verificando…';
+  const sep=CFG.syncUrl.indexOf('?')>=0?'&':'?';
+  fetch(CFG.syncUrl+sep+'login=1&user='+encodeURIComponent(sol)+'&pass='+encodeURIComponent(clave))
+    .then(r=>r.json()).then(res=>{btn.disabled=false;btn.textContent='INGRESAR';
+      if(!res||!res.ok){toast('Contraseña incorrecta');$('#clave').focus();return;}
+      SESSION.solicitante=sol;SESSION.despachador=des;entrarPedidos();})
+    .catch(()=>{btn.disabled=false;btn.textContent='INGRESAR';
+      SESSION.solicitante=sol;SESSION.despachador=des;entrarPedidos();toast('Sin conexión: entraste sin validar clave');});}
+function entrarPedidos(){$('#whoChip').textContent=SESSION.solicitante;
   $('#screen1').classList.add('hidden');$('#area2').classList.remove('hidden');
   document.body.classList.add('ordering');$('#area2').classList.add('enterFade');
-  nuevoPedido();refreshOrders();window.scrollTo(0,0);}
+  $('#clave').value='';nuevoPedido();refreshOrders();window.scrollTo(0,0);}
 function volver(){$('#area2').classList.add('hidden');$('#screen1').classList.remove('hidden');document.body.classList.remove('ordering');fillPeople()}
 function tierOf(c){const t=(c.tipo||'COMERCIAL').toUpperCase();return (t==='MAYORISTA'||t==='DISTRIBUIDOR')?t:'COMERCIAL'}
 function setupCombo(){const inp=$('#clienteInput'),list=$('#clienteList');
@@ -275,30 +286,41 @@ function updateFolioHint(){const h=$('#folioHint');if(!h)return;
 function renderOrders(){const box=$('#ordersList');if(!box)return;const hoy=todayStr();
   const list=ALLORDERS.filter(o=>String(o.fecha||o.creado||'').slice(0,10)===hoy).sort((a,b)=>ordNum(b.folio)-ordNum(a.folio));
   box.innerHTML=list.map(o=>{const fact=(o.estado||'').toUpperCase()==='FACTURADO';const u=o.items.reduce((s,x)=>s+(+x.qty||0),0);
+    const own=o.solicitante===SESSION.solicitante;
     return `<div class="oitem ${o.folio===EDIT_FOLIO?'sel':''}" onclick="loadOrder('${(o.folio||'').replace(/'/g,'')}')">
-      <div class="of"><b>${o.folio}</b>${fact?'<span class="badge lock">🔒 Facturado</span>':'<span class="badge pend">Pendiente</span>'}</div>
+      <div class="of"><b>${o.folio}</b>${fact?'<span class="badge lock">🔒 Facturado</span>':(own?'<span class="badge pend">Pendiente</span>':'<span class="badge lock">👁 Otro</span>')}</div>
       <div class="oc">${o.cliente?o.cliente.nombre:''}</div>
-      <div class="ou">${o.items.length} prod · ${u} und · ${o.despachador||''}</div></div>`;}).join('')
+      <div class="ou">${o.items.length} prod · ${u} und · 👤 ${o.solicitante||''}</div></div>`;}).join('')
     ||'<div class="mini" style="padding:14px">Aún no hay órdenes hoy.</div>';}
+let LOCK_REASON='';
 function loadOrder(folio){const o=ALLORDERS.find(x=>x.folio===folio);if(!o)return;
-  EDIT_FOLIO=folio;READONLY=(o.estado||'').toUpperCase()==='FACTURADO';
+  EDIT_FOLIO=folio;const fact=(o.estado||'').toUpperCase()==='FACTURADO';const own=o.solicitante===SESSION.solicitante;
+  READONLY=fact||!own;LOCK_REASON=fact?'🔒 Pedido facturado — solo lectura':(!own?'👁 Pedido de '+(o.solicitante||'otro solicitante')+' — solo lectura':'');
   CLIENTE=DB.clientes.find(c=>String(c.cedula)===String(o.cliente.cedula))||{...o.cliente};
   $('#clienteInput').value=o.cliente.nombre;
   $('#clienteInfo').innerHTML='CC '+o.cliente.cedula+' · '+((CLIENTE&&CLIENTE.city)||'')+' · '+(o.cliente.tier||'');
   LINES=o.items.map(it=>({desc:it.desc,qty:+it.qty||1,obs:it.obs||''}));if(!LINES.length)LINES=[{desc:'',qty:1,obs:''}];
   if(o.fecha)$('#fecha').value=String(o.fecha).replace(' ','T').slice(0,16);
-  $('#pedTitle').textContent=READONLY?'Pedido (facturado)':'Editar pedido';
+  $('#pedTitle').textContent=READONLY?(fact?'Pedido (facturado)':'Pedido (otro solicitante)'):'Editar pedido';
   renderLines();updateFolioHint();updateSendBtn();renderOrders();
   window.scrollTo({top:0,behavior:'smooth'});}
-function updateSendBtn(){const b=$('#btnSend'),ln=$('#lockNote');if(!b)return;
-  if(READONLY){b.style.display='none';if(ln)ln.style.display='block';}
-  else{b.style.display='';b.textContent=EDIT_FOLIO?'GUARDAR CAMBIOS':'ENVIAR PEDIDO';if(ln)ln.style.display='none';}}
+function updateSendBtn(){const b=$('#btnSend'),ln=$('#lockNote'),bd=$('#btnDel');if(!b)return;
+  if(READONLY){b.style.display='none';if(ln){ln.style.display='block';ln.textContent=LOCK_REASON||'🔒 Solo lectura';}if(bd)bd.style.display='none';}
+  else{b.style.display='';b.textContent=EDIT_FOLIO?'GUARDAR CAMBIOS':'ENVIAR PEDIDO';if(ln)ln.style.display='none';
+    if(bd)bd.style.display=EDIT_FOLIO?'block':'none';}}
+function eliminarPedido(){if(!EDIT_FOLIO||READONLY)return;
+  if(!confirm('¿Eliminar '+EDIT_FOLIO+'?\nEsta acción no se puede deshacer.'))return;
+  if(CFG.syncUrl){try{fetch(CFG.syncUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'deletePedido',folio:EDIT_FOLIO})}).catch(()=>{});}catch(e){}}
+  const all=LS.get('tlx_orders',[]).filter(x=>x.folio!==EDIT_FOLIO);LS.set('tlx_orders',all);
+  toast('Pedido eliminado 🗑');setTimeout(function(){refreshOrders();},1300);nuevoPedido();}
 function enviarPedido(){if(READONLY)return;if(!CLIENTE){toast('Selecciona un cliente');return}
   const valid=LINES.filter(l=>l.desc&&l.qty>0);if(!valid.length){toast('Agrega al menos un producto');return}
   const tier=tierOf(CLIENTE);
   const items=valid.map(l=>{const p=DB.productos.find(x=>x.desc===l.desc);const unit=p?p.base[tier]:0;return{desc:l.desc,qty:l.qty,unit:unit,total:unit*l.qty,obs:l.obs||''};});
-  const subtotal=Math.round(items.reduce((s,x)=>s+x.total,0));
-  const icui=Math.round(subtotal*ICUI),iva=Math.round(subtotal*IVA),total=subtotal+icui+iva;
+  const subtotal=items.reduce((s,x)=>s+x.total,0);
+  const icui=items.reduce((s,x)=>s+Math.round(x.total*ICUI),0);
+  const iva=items.reduce((s,x)=>s+Math.round(x.total*IVA),0);
+  const total=subtotal+icui+iva;
   const editing=!!EDIT_FOLIO;const folio=editing?EDIT_FOLIO:fmtFolio(NEXTNUM);
   const order={folio,fecha:$('#fecha').value,creado:new Date().toISOString(),solicitante:SESSION.solicitante,despachador:SESSION.despachador,
     cliente:{...CLIENTE,tier},items,subtotal,icui,iva,total};

@@ -26,9 +26,23 @@ var HEADER = ['Folio','Fecha','Solicitante','Despachador','Cedula','Cliente','Li
 function ahora() { return Utilities.formatDate(new Date(), 'America/Bogota', 'yyyy-MM-dd HH:mm:ss'); }
 
 function doGet(e) {
-  var res = (e && e.parameter && e.parameter.resource) || 'pedidos';
+  var p = (e && e.parameter) || {};
+  if (p.login) return json(login(p.user, p.pass));
+  var res = p.resource || 'pedidos';
   if (res === 'catalogo') return json(getCatalogo());
   return json(getPedidos());
+}
+/* Valida clave del solicitante (col D de TOLIMAX_solicitantes). Si no tiene clave, permite entrar. */
+function login(user, pass) {
+  var v = valores('solicitantes'); if (!v.length) return { ok: false };
+  for (var i = 1; i < v.length; i++) {
+    if (String(v[i][0]).trim() === String(user || '').trim()) {
+      var pw = String(v[i][3] || '').trim();
+      if (pw === '') return { ok: true, nombre: String(v[i][0]).trim(), sinClave: true };
+      return { ok: pw === String(pass || '').trim(), nombre: String(v[i][0]).trim() };
+    }
+  }
+  return { ok: false };
 }
 function doPost(e) {
   var lock = LockService.getScriptLock(); lock.waitLock(30000);
@@ -43,6 +57,7 @@ function doPost(e) {
     if (a === 'addFacturador') return json(addPersona('facturadores', body.nombre));
     if (a === 'facturar') return json(facturar(body));
     if (a === 'updatePedido') return json(updatePedido(body));
+    if (a === 'deletePedido') return json(deletePedido(body));
     return json(guardarPedido(body));
   } catch (err) { return json({ ok: false, error: String(err) }); } finally { lock.releaseLock(); }
 }
@@ -80,6 +95,16 @@ function facturar(body) {
     sh.getRange(i + 1, 19, 1, 4).setValues([['FACTURADO', body.facturador || '', ahora(), body.obs || '']]); n++;
   }
   return { ok: n > 0, folio: body.folio, filas: n };
+}
+function deletePedido(body) {
+  var sh = pedSheet(); var v = sh.getDataRange().getValues(); var rows = [];
+  for (var i = 1; i < v.length; i++) if (String(v[i][0]) === String(body.folio)) {
+    if (String(v[i][18]).toUpperCase() === 'FACTURADO') return { ok: false, error: 'FACTURADO' };
+    rows.push(i + 1);
+  }
+  if (!rows.length) return { ok: false, error: 'NO_EXISTE' };
+  rows.sort(function (a, b) { return b - a; }).forEach(function (r) { sh.deleteRow(r); });
+  return { ok: true, deleted: body.folio };
 }
 
 /* ---- Escrituras base ---- */
@@ -156,19 +181,25 @@ function valores(name) { try { return hoja(name).getDataRange().getValues(); } c
 function guardarFactura(order) {
   var it = DriveApp.getFoldersByName(FOLDER_FACTURAS);
   var folder = it.hasNext() ? it.next() : DriveApp.createFolder(FOLDER_FACTURAS);
+  var sSub = 0, sIcui = 0, sIva = 0;
   var rows = order.items.map(function (i) {
-    return '<tr><td>' + i.desc + (i.obs ? '<br><small style="color:#888">' + i.obs + '</small>' : '') + '</td><td align="right">' + i.qty +
-      '</td><td align="right">' + money(i.unit) + '</td><td align="right">' + money(i.total) + '</td></tr>'; }).join('');
-  var html = '<html><head><meta charset="utf-8"><style>body{font-family:Arial;color:#222;padding:24px}h1{color:#4A2A18}' +
-    'table{width:100%;border-collapse:collapse;margin-top:10px}th{background:#4A2A18;color:#fff;text-align:left;padding:8px}' +
-    'td{padding:8px;border-bottom:1px solid #eee}.r{text-align:right}</style></head><body>' +
-    '<h1>TOLIMAX S.A. &mdash; ' + order.folio + '</h1><p>' + order.cliente.nombre + ' &middot; CC ' + order.cliente.cedula +
+    var sub = Math.round(i.total), ic = Math.round(sub * 0.2), iv = Math.round(sub * 0.05);
+    sSub += sub; sIcui += ic; sIva += iv;
+    return '<tr><td>' + i.desc + (i.obs ? '<br><small style="color:#888">' + i.obs + '</small>' : '') + '</td><td class="r">' + i.qty +
+      '</td><td class="r">' + money(i.unit) + '</td><td class="r">' + money(sub) + '</td><td class="r">' + money(ic) +
+      '</td><td class="r">' + money(iv) + '</td><td class="r">' + money(sub + ic + iv) + '</td></tr>'; }).join('');
+  var tot = sSub + sIcui + sIva;
+  var html = '<html><head><meta charset="utf-8"><style>body{font-family:Arial;color:#222;padding:24px}h1{color:#4A2A18;margin:6px 0}' +
+    'table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}th{background:#4A2A18;color:#fff;text-align:left;padding:7px}' +
+    'td{padding:7px;border-bottom:1px solid #eee}.r{text-align:right}.hdr{display:flex;align-items:center;gap:14px}' +
+    '.hdr img{height:84px;border-radius:50%}</style></head><body>' +
+    '<div class="hdr"><img src="https://tolimax-neiva.github.io/tolimax/logo_factura.jpeg"><div><h1>TOLIMAX S.A.</h1>' +
+    '<small>Industrial Cacaotera del Huila &middot; Neiva<br>tesoreria@tolimax.com.co</small></div></div>' +
+    '<p><b>' + order.folio + '</b> &middot; ' + order.cliente.nombre + ' &middot; CC ' + order.cliente.cedula +
     ' &middot; Lista: ' + order.cliente.tier + '<br>Fecha: ' + order.fecha + '</p>' +
-    '<table><tr><th>Producto</th><th class="r">Cant</th><th class="r">Subtotal U.</th><th class="r">Subtotal</th></tr>' + rows +
-    '<tr><td colspan="3" class="r">Subtotal</td><td class="r">' + money(order.subtotal) + '</td></tr>' +
-    '<tr><td colspan="3" class="r">ICUI 20%</td><td class="r">' + money(order.icui) + '</td></tr>' +
-    '<tr><td colspan="3" class="r">IVA 5%</td><td class="r">' + money(order.iva) + '</td></tr>' +
-    '<tr><td colspan="3" class="r"><b>TOTAL</b></td><td class="r"><b>' + money(order.total) + '</b></td></tr></table></body></html>';
+    '<table><tr><th>Producto</th><th class="r">Cant</th><th class="r">V.Unit</th><th class="r">Subtotal</th><th class="r">ICUI 20%</th><th class="r">IVA 5%</th><th class="r">Total</th></tr>' + rows +
+    '<tr><td colspan="3" class="r"><b>Totales</b></td><td class="r"><b>' + money(sSub) + '</b></td><td class="r"><b>' + money(sIcui) +
+    '</b></td><td class="r"><b>' + money(sIva) + '</b></td><td class="r"><b>' + money(tot) + '</b></td></tr></table></body></html>';
   folder.createFile(order.folio + '.html', html, MimeType.HTML);
 }
 function money(n) { return '$' + Math.round(n).toLocaleString('es-CO'); }
