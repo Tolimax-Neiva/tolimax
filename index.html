@@ -214,7 +214,8 @@ function saveCfg(){LS.set('tlx_cfg',CFG)}
 let SESSION={solicitante:'',despachador:''},CLIENTE=null,LINES=[];
 let SOL=CFG.solicitantes.slice(),DES=CFG.despachadores.slice(),CATLOADED=false;
 let ALLORDERS=[],NEXTNUM=1,EDIT_FOLIO=null,READONLY=false;
-function todayStr(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function todayStr(){return localDay();}
+function localDay(x){const d=x?new Date(x):new Date();if(isNaN(d))return String(x||'').slice(0,10);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function ordNum(f){const m=/(\d+)\s*$/.exec(f||'');return m?parseInt(m[1]):0;}
 function fmtFolio(n){return 'Orden de Pedido -'+String(n).padStart(4,'0');}
 const ICUI=0.20, IVA=0.05;   // impuesto ultraprocesados 20% + IVA 5%
@@ -284,7 +285,7 @@ function updateFolioHint(){const h=$('#folioHint');if(!h)return;
   if(EDIT_FOLIO)h.innerHTML='<b>'+EDIT_FOLIO+'</b>'+(READONLY?' · 🔒 facturado (solo lectura)':' · editando');
   else h.innerHTML='Solicita: '+SESSION.solicitante+' · Próxima: <b>'+fmtFolio(NEXTNUM)+'</b>';}
 function renderOrders(){const box=$('#ordersList');if(!box)return;const hoy=todayStr();
-  const list=ALLORDERS.filter(o=>String(o.fecha||o.creado||'').slice(0,10)===hoy).sort((a,b)=>ordNum(b.folio)-ordNum(a.folio));
+  const list=ALLORDERS.filter(o=>localDay(o.fecha||o.creado)===hoy).sort((a,b)=>ordNum(b.folio)-ordNum(a.folio));
   box.innerHTML=list.map(o=>{const fact=(o.estado||'').toUpperCase()==='FACTURADO';const u=o.items.reduce((s,x)=>s+(+x.qty||0),0);
     const own=o.solicitante===SESSION.solicitante;
     return `<div class="oitem ${o.folio===EDIT_FOLIO?'sel':''}" onclick="loadOrder('${(o.folio||'').replace(/'/g,'')}')">
