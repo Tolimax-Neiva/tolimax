@@ -153,7 +153,7 @@ function getPedidos() {
     var folio = r[0]; if (!folio) return;
     if (!by[folio]) by[folio] = { folio: folio, fecha: r[1], solicitante: r[2], despachador: r[3],
       cliente: { cedula: String(r[4]), nombre: r[5], tier: r[6], pago: r[7] }, items: [],
-      subtotal: r[12], icui: r[13], iva: r[14], total: r[15],
+      subtotal: r[12], icui: r[13], iva: r[14], total: r[15], registrado: r[16] || '',
       estado: r[18] || 'PENDIENTE', facturador: r[19] || '', fechaFactura: r[20] || '', obsFactura: r[21] || '' };
     by[folio].items.push({ desc: r[8], qty: r[9], unit: r[10], total: r[11], obs: r[17] || '' });
   });
