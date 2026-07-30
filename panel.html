@@ -108,7 +108,7 @@ table.orders tbody tr{cursor:pointer}table.orders tbody tr:hover{background:var(
   <img src="logo.jpeg" alt="TOLIMAX">
   <div class="seg"><button id="segList" class="on" onclick="setView('list')">📋 Pedidos</button><button id="segDash" onclick="setView('dash')">📊 Informe</button></div>
   <div class="sp"></div>
-  <button class="tbtn" onclick="loadFromDrive()">☁ Cargar de Drive</button>
+  <button class="tbtn" id="btnRefrescar" onclick="loadFromDrive()" style="background:var(--gold);color:#2A1710;border-color:var(--gold);font-weight:800;box-shadow:0 3px 10px rgba(200,138,46,.45)">🔄 Actualizar</button>
   <button class="tbtn" onclick="openClientes()">👤 Clientes</button>
   <button class="tbtn" onclick="openProductos()">📦 Productos</button>
   <button class="tbtn" onclick="openAddPersonas()">＋ Personas</button>
@@ -427,9 +427,11 @@ function parseCSV(txt){const lines=txt.replace(/^﻿/,'').split(/\r?\n/).filter(
     if(!by[folio])by[folio]={folio,fecha,solicitante:sol,despachador:des,cliente:{cedula:ced,nombre:(cli||'').replace(/^"|"$/g,''),tier},items:[],subtotal:+sub,icui:+icui,iva:+iva,total:+tot};
     by[folio].items.push({desc:(prod||'').replace(/^"|"$/g,''),qty:+qty,unit:+unit,total:+ltot});});return Object.values(by);}
 function splitCSV(l){const o=[];let c='',q=false;for(const ch of l){if(ch==='"')q=!q;else if(ch===';'&&!q){o.push(c);c=''}else c+=ch}o.push(c);return o}
-function loadFromDrive(){const u=syncUrl()||prompt('Pega la URL del script de Drive (Apps Script):');if(!u)return;toast('Cargando…');
+function loadFromDrive(){const u=syncUrl()||prompt('Pega la URL del script de Drive (Apps Script):');if(!u)return;
+  const b=$('#btnRefrescar');if(b){b._t=b.textContent;b.textContent='⏳ Actualizando…';b.disabled=true;}
+  const fin=()=>{if(b){b.textContent=b._t||'🔄 Actualizar';b.disabled=false;}};
   fetch(u+(u.indexOf('?')>=0?'&':'?')+'t='+Date.now(),{cache:'no-store'}).then(r=>r.json()).then(d=>{if(!Array.isArray(d))throw 0;ORDERS=d;DEMO=false;$('#demoBanner').style.display='none';ORDERS.forEach(taxes);LS.set('tlx_orders',d);CURMONTH=null;
-    ORDERS.sort((a,b)=>new Date(b.fecha||b.creado)-new Date(a.fecha||a.creado));buildMonths();toast(d.length+' pedidos de Drive ✓');}).catch(e=>toast('No se pudo cargar. Revisa URL/permisos.'));}
+    ORDERS.sort((a,b)=>new Date(b.fecha||b.creado)-new Date(a.fecha||a.creado));buildMonths();loadCatalogPanel();fin();toast(d.length+' pedidos actualizados ✓');}).catch(e=>{fin();toast('No se pudo actualizar. Revisa URL/permisos.');});}
 function exportMonth(){const mo=monthOrders();if(!mo.length){toast('Nada que exportar');return}
   const head=['Folio','Fecha','Solicitante','Despachador','Cedula','Cliente','Ciudad','Lista','Producto','Obs','Cantidad','V.Unit','Subtotal','ICUI 20%','IVA 5%','Total','Estado','Facturador'];
   const rows=[head.join(';')];
