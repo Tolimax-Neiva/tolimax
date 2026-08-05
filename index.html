@@ -195,7 +195,7 @@ body.ordering #bgvid,body.ordering #bgvid-ov{opacity:0;pointer-events:none}
       <span class="link" onclick="volver()">← Cambiar solicitante/despachador</span></div>
    </div>
    <div id="ordersPanel" class="card">
-     <div class="op-head"><b>📋 Órdenes recientes (24h)</b><span class="link" style="color:var(--cacao-600)" onclick="refreshOrders(true)">↻ Actualizar</span></div>
+     <div class="op-head"><b>📋 Órdenes recientes</b><span class="link" style="color:var(--cacao-600)" onclick="refreshOrders(true)">↻ Actualizar</span></div>
      <div id="ordersList"></div>
    </div>
   </div>
@@ -288,9 +288,10 @@ function updateFolioHint(){const h=$('#folioHint');if(!h)return;
 function hace(x){const d=new Date(x);if(isNaN(d))return '';let s=Math.floor((Date.now()-d.getTime())/1000);if(s<0)s=0;
   if(s<60)return 'hace '+s+' s';const m=Math.floor(s/60);if(m<60)return 'hace '+m+' min';
   const h=Math.floor(m/60);if(h<24)return 'hace '+h+' h '+(m%60)+' min';const dd=Math.floor(h/24);return 'hace '+dd+' d';}
-function recente(o){const d=new Date(o.registrado||o.fecha||o.creado);if(isNaN(d))return false;const diff=Date.now()-d.getTime();return diff<=24*3600*1000 && diff>=-2*3600*1000;}
+function recente(o){const d=new Date(o.registrado||o.fecha||o.creado);if(isNaN(d))return false;const diff=Date.now()-d.getTime();if(diff< -2*3600*1000)return false;const fact=(o.estado||'').toUpperCase()==='FACTURADO';return diff<=7*24*3600*1000 || !fact;}
+let ORDERS_EXPANDED=false;function toggleOrders(){ORDERS_EXPANDED=!ORDERS_EXPANDED;renderOrders();}
 function renderOrders(){const box=$('#ordersList');if(!box)return;
-  const list=ALLORDERS.filter(recente).sort((a,b)=>new Date(b.registrado||b.fecha||b.creado)-new Date(a.registrado||a.fecha||a.creado));
+  const full=ALLORDERS.filter(recente).sort((a,b)=>new Date(b.registrado||b.fecha||b.creado)-new Date(a.registrado||a.fecha||a.creado));const list=ORDERS_EXPANDED?full:full.slice(0,10);
   box.innerHTML=list.map(o=>{const fact=(o.estado||'').toUpperCase()==='FACTURADO';const u=o.items.reduce((s,x)=>s+(+x.qty||0),0);
     const own=o.solicitante===SESSION.solicitante;
     return `<div class="oitem ${o.folio===EDIT_FOLIO?'sel':''}" onclick="loadOrder('${(o.folio||'').replace(/'/g,'')}')">
@@ -298,7 +299,7 @@ function renderOrders(){const box=$('#ordersList');if(!box)return;
       <div class="oc">${o.cliente?o.cliente.nombre:''}</div>
       <div class="ou">${o.items.length} prod · ${u} und · 👤 ${o.solicitante||''}</div>
       <div class="ot">🕒 ${hace(o.registrado||o.fecha||o.creado)}</div></div>`;}).join('')
-    ||'<div class="mini" style="padding:14px">Sin órdenes en las últimas 24 h.</div>';}
+    ||'<div class="mini" style="padding:14px">Sin órdenes activas.</div>';if(full.length>10)box.innerHTML+='<div style="padding:12px 14px;text-align:center;border-top:1px solid #efe2cf"><span class="link" style="color:var(--cacao-600)" onclick="toggleOrders()">'+(ORDERS_EXPANDED?'▲ Ver menos':'▾ Ver más ('+(full.length-10)+')')+'</span></div>';}
 let LOCK_REASON='';
 function loadOrder(folio){const o=ALLORDERS.find(x=>x.folio===folio);if(!o)return;
   EDIT_FOLIO=folio;const fact=(o.estado||'').toUpperCase()==='FACTURADO';const own=o.solicitante===SESSION.solicitante;
