@@ -184,6 +184,7 @@ function loadCatalogPanel(){const u=syncUrl();if(!u)return;const sep=u.indexOf('
     FACTURADORES=cat.facturadores||[];}).catch(()=>{});}
 function facturado(o){return String(o.estado||'').toUpperCase()==='FACTURADO';}
 function cityOf(o){const c=DBP.clientes.find(x=>String(x.cedula)===String(o.cliente.cedula));return (c&&c.city)||o.cliente.city||'';}
+function dirOf(o){const c=DBP.clientes.find(x=>String(x.cedula)===String(o.cliente.cedula));return o.cliente.dir||(c&&c.dir)||'';}
 function mk(o){const d=new Date(o.fecha||o.creado);return isNaN(d)?'0000-00':d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')}
 function mName(k){const[y,m]=k.split('-');return MES[parseInt(m)-1]+' '+y}
 function taxes(o){ // compat: recalcula si faltan
@@ -290,7 +291,7 @@ function invoiceHTML(o){taxes(o);let sSub=0,sIc=0,sIv=0;
   const fact=facturado(o)?`<div style="background:#2E7D46;color:#fff;padding:8px 12px;border-radius:8px;font-weight:800;margin-bottom:12px">✔ FACTURADO${o.facturador?' · por '+o.facturador:''}${o.fechaFactura?' · '+o.fechaFactura:''}</div>`:'';
   return `<div class="inv" id="invoicePrint">${fact}<div class="ih"><div class="co"><img src="logo_factura.jpeg" alt="TOLIMAX" style="height:66px;width:66px;border-radius:50%;object-fit:cover;border:2px solid #eee"><b>${EMP.nombre}</b><small>${EMP.dir}<br>Tel: ${EMP.tel} · Facturación: ${EMP.mail}</small></div>
     <div style="text-align:right"><div class="num">${o.folio}</div><small style="display:block;margin-top:6px;color:#777">${isNaN(f)?'':f.toLocaleString('es-CO',{dateStyle:'medium',timeStyle:'short'})}</small></div></div>
-    <div class="party"><div><h4>Cliente</h4><b>${o.cliente.nombre}</b><br><small style="color:#666">CC/NIT ${o.cliente.cedula}<br>${o.cliente.dir||''}<br>${o.cliente.city||''} · Tel: ${o.cliente.tel||'—'}<br>Pago: <b>${o.cliente.pago||'—'}</b></small></div>
+    <div class="party"><div><h4>Cliente</h4><b>${o.cliente.nombre}</b><br><small style="color:#666">CC/NIT ${o.cliente.cedula}<br>Dir: <b>${dirOf(o)||'—'}</b><br>${o.cliente.city||''} · Tel: ${o.cliente.tel||'—'}<br>Pago: <b>${o.cliente.pago||'—'}</b></small></div>
     <div style="text-align:right"><h4>Pedido</h4><small style="color:#666">Lista: <b>${o.cliente.tier}</b><br>Solicitante: ${o.solicitante||'—'}<br>Despachador: ${o.despachador||'—'}</small></div></div>
     <table><thead><tr><th>Descripción</th><th class="r">Cant.</th><th class="r">V.Unit</th><th class="r">Subtotal</th><th class="r">ICUI 20%</th><th class="r">IVA 5%</th><th class="r">Total</th></tr></thead><tbody>${rows}</tbody>
     <tfoot><tr class="t"><td class="r">TOTALES</td><td class="r">${qTot}</td><td></td><td class="r">${money(sSub)}</td><td class="r">${money(sIc)}</td><td class="r">${money(sIv)}</td><td class="r">${money(gTot)}</td></tr></tfoot></table>
