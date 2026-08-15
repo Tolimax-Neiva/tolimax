@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TOLIMAX · Panel contable</title>
 <script src="data.js"></script>
+<script>(function(){try{var a=JSON.parse(localStorage.getItem('tlx_contable_auth')||'null');if(!a||!a.ts||(Date.now()-a.ts)>86400000){location.replace('index.html#contable');}}catch(e){location.replace('index.html#contable');}})();</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
 :root{--cacao-900:#2A1710;--cacao-700:#4A2A18;--cacao-600:#5E3620;--gold:#C88A2E;--gold-soft:#E0B067;
@@ -114,6 +115,7 @@ table.orders tbody tr{cursor:pointer}table.orders tbody tr:hover{background:var(
   <button class="tbtn" onclick="openAddPersonas()">＋ Personas</button>
   <button class="tbtn" onclick="exportMonth()">⬇ Exportar mes</button>
   <button class="tbtn" onclick="document.getElementById('imp').click()">⬆ Importar</button>
+  <button class="tbtn" onclick="salirContable()">🔒 Salir</button>
   <input type="file" id="imp" accept=".json,.csv" style="display:none" onchange="importFile(event)">
 </div>
 
@@ -329,6 +331,7 @@ function confirmarFactura(gi){const o=ORDERS[gi];const sel=$('#fSel');const nw=$
   LS.set('tlx_orders',ORDERS);toast('Pedido facturado 🔒');renderAll();openInvoice(gi);}
 function dl(folio){const o=window._inv;const html='<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+folio+'</title><style>'+document.querySelector('style').textContent+'</style></head><body style="background:#fff"><div class="wrap">'+invoiceHTML(o)+'</div></body></html>';
   const b=new Blob([html],{type:'text/html'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='Factura_'+folio+'.html';a.click()}
+function salirContable(){try{localStorage.removeItem('tlx_contable_auth')}catch(e){}location.replace('index.html');}
 function closeModal(){$('#overlay').classList.remove('open')}
 $('#overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeModal()});
 
