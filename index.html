@@ -33,9 +33,21 @@ body{font-family:'Segoe UI',system-ui,-apple-system,Roboto,Arial,sans-serif;back
 #lockNote{display:none;background:#f4efe6;border:1px solid var(--line);border-radius:12px;padding:12px;text-align:center;color:var(--cacao-600);font-weight:700;margin-top:6px}
 .line select:disabled,.line input:disabled{background:#f3ede2;color:#9a8a75}
 .line select option:disabled{color:#bbb}
-.top{display:flex;align-items:center;gap:12px;padding:16px 4px}
-.top img{height:52px;width:auto;filter:drop-shadow(0 3px 8px rgba(0,0,0,.4))}
-.top .sub{color:var(--gold-soft);font-size:11px;letter-spacing:2px;text-transform:uppercase;margin-left:auto}
+.top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:14px 0 8px;padding:12px 16px;border-radius:20px;
+  background:linear-gradient(135deg,rgba(58,32,19,.55),rgba(36,16,9,.30));border:1px solid rgba(224,176,103,.28);
+  box-shadow:0 12px 34px rgba(0,0,0,.30);backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px)}
+.top .brand{display:flex;align-items:center;gap:14px;min-width:0}
+.top .logoPlate{display:flex;align-items:center;justify-content:center;height:54px;padding:6px 12px;border-radius:14px;flex:none;
+  background:linear-gradient(180deg,#fff,#f3ece0);box-shadow:0 6px 18px rgba(0,0,0,.32),inset 0 0 0 1px rgba(200,138,46,.25)}
+.top .logoPlate img{height:100%;width:auto;max-width:160px;object-fit:contain;display:block;filter:none}
+.top .brandDiv{width:1px;height:38px;flex:none;background:linear-gradient(180deg,transparent,rgba(224,176,103,.7),transparent)}
+.top .sub{color:var(--gold-soft);font-size:12px;letter-spacing:2.5px;text-transform:uppercase;font-weight:800;line-height:1.3}
+.topActions{margin-left:auto;display:flex;gap:8px;align-items:center}
+.topbtn{background:linear-gradient(145deg,rgba(224,176,103,.24),rgba(200,138,46,.12));border:1px solid rgba(224,176,103,.5);
+  color:#F3DDB0;font-weight:800;font-size:12.5px;letter-spacing:.3px;padding:10px 15px;border-radius:13px;cursor:pointer;
+  white-space:nowrap;transition:.2s ease;box-shadow:0 4px 12px rgba(0,0,0,.18)}
+.topbtn:hover{background:rgba(224,176,103,.34);color:#fff;transform:translateY(-1px)}
+.topbtn:active{transform:translateY(0)}
 .card{background:var(--cream);border-radius:20px;box-shadow:var(--shadow);padding:22px;margin-bottom:16px}
 .card h1{font-size:20px;margin:0 0 2px;color:var(--cacao-700)}
 .card .subt{color:var(--muted);font-size:13px;margin-bottom:18px}
@@ -158,7 +170,16 @@ body.ordering #bgvid,body.ordering #bgvid-ov{opacity:0;pointer-events:none}
   <div class="loader"><div class="spin"></div><span id="loadTxt">Cargando base de datos…</span></div>
 </div>
 <div class="wrap">
-  <div class="top"><img src="logo.jpeg" alt="TOLIMAX"><span class="sub">Pedidos de producción</span></div>
+  <header class="top">
+    <div class="brand">
+      <span class="logoPlate"><img src="logo.jpeg" alt="TOLIMAX"></span>
+      <span class="brandDiv"></span>
+      <span class="sub">Pedidos de<br>producción</span>
+    </div>
+    <div class="topActions">
+      <button id="btnVerPanel" class="topbtn hidden" onclick="verPanelContable()">👁 Panel contable</button>
+    </div>
+  </header>
 
   <div id="screen1" class="card">
     <h1>Iniciar turno</h1>
@@ -266,8 +287,11 @@ function aceptar(){const sol=$('#solicitante').value,des=$('#despachador').value
 function entrarPedidos(){$('#whoChip').textContent=SESSION.solicitante;
   $('#screen1').classList.add('hidden');$('#area2').classList.remove('hidden');
   document.body.classList.add('ordering');$('#area2').classList.add('enterFade');
+  var vp=$('#btnVerPanel');if(vp)vp.classList.remove('hidden');
   $('#clave').value='';nuevoPedido();refreshOrders();window.scrollTo(0,0);}
-function volver(){$('#area2').classList.add('hidden');$('#screen1').classList.remove('hidden');document.body.classList.remove('ordering');fillPeople()}
+function volver(){$('#area2').classList.add('hidden');$('#screen1').classList.remove('hidden');document.body.classList.remove('ordering');var vp=$('#btnVerPanel');if(vp)vp.classList.add('hidden');fillPeople()}
+function verPanelContable(){LS.set('tlx_contable_auth',{user:SESSION.solicitante||'Solicitante',ts:Date.now(),ro:true});
+  window.open('panel.html','_blank');}
 function tierOf(c){const t=(c.tipo||'COMERCIAL').toUpperCase();return (t==='MAYORISTA'||t==='DISTRIBUIDOR')?t:'COMERCIAL'}
 function setupCombo(){const inp=$('#clienteInput'),list=$('#clienteList');
   const render=q=>{q=(q||'').trim().toLowerCase();let a=DB.clientes;

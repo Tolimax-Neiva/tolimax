@@ -110,12 +110,13 @@ table.orders tbody tr{cursor:pointer}table.orders tbody tr:hover{background:var(
   <img src="logo.jpeg" alt="TOLIMAX">
   <div class="seg"><button id="segList" class="on" onclick="setView('list')">📋 Pedidos</button><button id="segDash" onclick="setView('dash')">📊 Informe</button></div>
   <div class="sp"></div>
+  <span id="roBadge" style="display:none;align-items:center;gap:6px;background:rgba(224,176,103,.18);border:1px solid rgba(224,176,103,.5);color:#F3DDB0;border-radius:999px;padding:7px 13px;font-size:12px;font-weight:800;white-space:nowrap">👁 Solo lectura</span>
   <button class="tbtn" id="btnRefrescar" onclick="loadFromDrive()" style="background:var(--gold);color:#2A1710;border-color:var(--gold);font-weight:800;box-shadow:0 3px 10px rgba(200,138,46,.45)">🔄 Actualizar</button>
-  <button class="tbtn" onclick="openClientes()">👤 Clientes</button>
-  <button class="tbtn" onclick="openProductos()">📦 Productos</button>
-  <button class="tbtn" onclick="openAddPersonas()">＋ Personas</button>
-  <button class="tbtn" onclick="exportMonth()">⬇ Exportar mes</button>
-  <button class="tbtn" onclick="document.getElementById('imp').click()">⬆ Importar</button>
+  <button class="tbtn" id="btnClientes" onclick="openClientes()">👤 Clientes</button>
+  <button class="tbtn" id="btnProductos" onclick="openProductos()">📦 Productos</button>
+  <button class="tbtn" id="btnPersonas" onclick="openAddPersonas()">＋ Personas</button>
+  <button class="tbtn" id="btnExportar" onclick="exportMonth()">⬇ Exportar mes</button>
+  <button class="tbtn" id="btnImportar" onclick="document.getElementById('imp').click()">⬆ Importar</button>
   <button class="tbtn" onclick="salirContable()">🔒 Salir</button>
   <input type="file" id="imp" accept=".json,.csv" style="display:none" onchange="importFile(event)">
 </div>
@@ -175,6 +176,13 @@ const MES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Se
 const LS={get:(k,d)=>{try{const v=localStorage.getItem(k);return v===null?d:JSON.parse(v)}catch(e){return d}},set:(k,v)=>localStorage.setItem(k,JSON.stringify(v))};
 const ICUI=0.20,IVA=0.05;
 let ORDERS=[],DEMO=false,CURMONTH=null,VIEW='list',FACTURADORES=[];
+var TLX_AUTH=(function(){try{return JSON.parse(localStorage.getItem('tlx_contable_auth')||'null')}catch(e){return null}})();
+var READONLY_MODE=!!(TLX_AUTH&&TLX_AUTH.ro);   // solicitante entró como visualizador
+function applyReadonlyUI(){if(!READONLY_MODE)return;
+  ['btnClientes','btnProductos','btnPersonas','btnImportar'].forEach(function(id){var b=document.getElementById(id);if(b)b.style.display='none';});
+  var badge=document.getElementById('roBadge');if(badge){badge.style.display='inline-flex';badge.textContent='👁 Solo lectura'+(TLX_AUTH&&TLX_AUTH.user?' · '+TLX_AUTH.user:'');}
+  var be=document.getElementById('btnExportar');if(be){be.style.background='var(--gold)';be.style.color='#2A1710';be.style.borderColor='var(--gold)';be.style.fontWeight='800';be.style.boxShadow='0 3px 10px rgba(200,138,46,.45)';}
+  document.title='TOLIMAX · Panel (solo lectura)';}
 const DEFAULT_SYNC='https://script.google.com/macros/s/AKfycbysly2NjPXQAUqwrxjn8Qwb4KS3RFxsI0OtPPcz-58ZpRYn1Zx3_QqAPWtQI3XZE24vvg/exec';
 function syncUrl(){return ((LS.get('tlx_cfg',{})||{}).syncUrl)||DEFAULT_SYNC}
 function autoLoadDrive(){const u=syncUrl();if(!u)return;
@@ -194,7 +202,7 @@ function taxes(o){ // compat: recalcula si faltan
   if(o.icui==null||o.iva==null){o.subtotal=o.subtotal||o.items.reduce((s,x)=>s+x.total,0);o.icui=Math.round(o.subtotal*ICUI);o.iva=Math.round(o.subtotal*IVA);o.total=o.subtotal+o.icui+o.iva;}
   return o;}
 
-function load(){ORDERS=LS.get('tlx_orders',[]);
+function load(){applyReadonlyUI();ORDERS=LS.get('tlx_orders',[]);
   if(!ORDERS.length){ORDERS=demoData();DEMO=true;$('#demoBanner').style.display='flex'}
   ORDERS.forEach(taxes);
   ORDERS.sort((a,b)=>new Date(b.fecha||b.creado)-new Date(a.fecha||a.creado));buildMonths();
@@ -301,10 +309,20 @@ function invoiceHTML(o){taxes(o);let sSub=0,sIc=0,sIv=0;
     ${o.obsFactura?`<div style="margin-top:12px;font-size:12.5px;color:#555;background:#f7f2e9;border-radius:8px;padding:10px 12px"><b>Observación de facturación:</b> ${o.obsFactura}</div>`:''}
     <div class="note">Los valores unitarios corresponden al <b>subtotal (base)</b>; el ICUI (impuesto a ultraprocesados, 20%) y el IVA (5%) se liquidan al final. Lista de precios <b>${o.cliente.tier}</b>. Pre-factura / orden de producción interna.</div></div>`;}
 function openInvoice(gi){const o=ORDERS[gi];window._inv=o;
-  const facBtn=facturado(o)?`<button class="btn btn-ghost" disabled style="opacity:.6">🔒 Facturado</button>`:`<button class="btn" style="background:var(--ok);color:#fff" onclick="openFacturar(${gi})">🧾 Facturar</button>`;
+  const facBtn=READONLY_MODE?'':(facturado(o)?`<button class="btn btn-ghost" disabled style="opacity:.6">🔒 Facturado</button>`:`<button class="btn" style="background:var(--ok);color:#fff" onclick="openFacturar(${gi})">🧾 Facturar</button>`);
+  const delBtn=(!READONLY_MODE&&!facturado(o))?`<button class="btn" style="background:var(--danger);color:#fff;box-shadow:0 3px 12px rgba(178,59,46,.45)" onclick="eliminarPedidoPanel(${gi})">🗑 Eliminar pedido</button>`:'';
   $('#modal').innerHTML=`<div class="mh"><b>Pedido · ${o.folio}</b><button class="x" onclick="closeModal()">×</button></div><div>${invoiceHTML(o)}</div>
-    <div class="mfoot"><button class="btn btn-primary" onclick="window.print()">🖨 Imprimir</button><button class="btn btn-ghost" onclick="dl('${o.folio}')">⬇ Descargar</button>${facBtn}</div>`;
+    <div class="mfoot"><button class="btn btn-primary" onclick="window.print()">🖨 Imprimir</button>${delBtn}<button class="btn btn-ghost" onclick="dl('${o.folio}')">⬇ Descargar</button>${facBtn}</div>`;
   $('#overlay').classList.add('open');}
+/* ---- Eliminar pedido (solo facturadores · solo NO facturados · irreversible) ---- */
+function eliminarPedidoPanel(gi){var o=ORDERS[gi];if(!o)return;
+  if(READONLY_MODE){toast('Modo solo lectura: no puedes eliminar');return;}
+  if(facturado(o)){toast('No se puede eliminar un pedido facturado');return;}
+  if(!confirm('⚠ ELIMINAR PEDIDO '+o.folio+'\n\nEstás por eliminar este pedido de forma PERMANENTE.\nEsta acción es IRREVERSIBLE y no se puede deshacer.\n\n¿Deseas continuar?'))return;
+  postDrive({action:'deletePedido',folio:o.folio});
+  var ix=ORDERS.indexOf(o);if(ix>=0)ORDERS.splice(ix,1);
+  LS.set('tlx_orders',ORDERS);closeModal();buildMonths();
+  toast('Pedido '+o.folio+' eliminado 🗑');}
 /* ---- Facturar (bloquea el pedido) ---- */
 function openFacturar(gi){const o=ORDERS[gi];const opts=FACTURADORES.map(f=>`<option>${f}</option>`).join('');
   $('#modal').innerHTML=`<div class="mh"><b>Facturar · ${o.folio}</b><button class="x" onclick="openInvoice(${gi})">←</button></div>
@@ -418,7 +436,7 @@ function openAddPersonas(){$('#modal').innerHTML=`<div class="mh"><b>Añadir per
   $('#overlay').classList.add('open');}
 function addPersona(action,id){const v=$('#'+id).value.trim();if(!v){toast('Escribe un nombre');return}
   postDrive({action,nombre:v});if(action==='addFacturador'&&FACTURADORES.indexOf(v)<0)FACTURADORES.push(v);$('#'+id).value='';toast('Guardado en Drive ✓');}
-function postDrive(payload){const u=syncUrl();if(!u){toast('Conecta Drive primero (⚙ en la app)');return}
+function postDrive(payload){if(READONLY_MODE){toast('Modo solo lectura: acción no permitida');return}const u=syncUrl();if(!u){toast('Conecta Drive primero (⚙ en la app)');return}
   try{fetch(u,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)}).catch(()=>{});}catch(e){}}
 
 /* ---- Import / Drive / Export ---- */
