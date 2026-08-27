@@ -150,11 +150,13 @@ table.orders tbody tr{cursor:pointer}table.orders tbody tr:hover{background:var(
       <select id="dashMonth" onchange="renderDash()"></select>
       <div class="segL"><button id="mMonto" class="on" onclick="setMetric('monto')">$ Ventas</button>
         <button id="mUnid" onclick="setMetric('unidades')">Unidades</button>
+        <button id="mCaja" onclick="setMetric('cajas')">📦 Cajas</button>
         <button id="mPed" onclick="setMetric('pedidos')"># Pedidos</button></div>
       <span id="filterChips"></span>
     </div>
     <div class="hint" style="margin-bottom:12px">💡 Haz clic en cualquier barra o porción para filtrar todo el informe (mes, lista, producto, solicitante o cliente). Vuelve a hacer clic o usa "✕ Limpiar" para quitar el filtro.</div>
     <div class="dashgrid">
+      <div class="chartcard" style="grid-column:1/-1"><h4>📦 Cajas por mes <small>(apiladas por gramaje · clic en un color = filtrar por tipo de caja)</small></h4><canvas id="cCajas" style="max-height:300px"></canvas></div>
       <div class="chartcard"><h4>Ventas por mes <small>(clic = cambiar mes)</small></h4><canvas id="cMes"></canvas></div>
       <div class="chartcard"><h4>Por lista de precios <small>(clic = filtrar)</small></h4><canvas id="cTier"></canvas></div>
       <div class="chartcard"><h4>Top productos <small>(clic = filtrar)</small></h4><canvas id="cProd"></canvas></div>
@@ -175,6 +177,19 @@ const $=s=>document.querySelector(s);
 const MES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const LS={get:(k,d)=>{try{const v=localStorage.getItem(k);return v===null?d:JSON.parse(v)}catch(e){return d}},set:(k,v)=>localStorage.setItem(k,JSON.stringify(v))};
 const ICUI=0.20,IVA=0.05;
+/* ---- Cajas por gramaje (packing) ----  25gr = display */
+const BOX_MAP={200:120,250:100,400:60,25:12};   // unidades por caja según gramaje
+const BOX_CATS=['200gr','250gr','400gr','Display'];
+const BOX_COLORS={'200gr':'#C88A2E','250gr':'#5E3620','400gr':'#2E7D46','Display':'#5B47B0','Otros':'#9a8a75'};
+let DESC_GR={};   // desc de producto -> gramaje
+function buildDescGr(){DESC_GR={};(DBP.productos||[]).forEach(function(p){if(p&&p.desc)DESC_GR[p.desc]=(+p.gramos)||null;});}
+function grOf(it){var g=DESC_GR[it.desc];if(g==null){var m=/(\d+)\s*GR/i.exec(it.desc||'');g=m?+m[1]:null;}return g;}
+function boxCat(g){return g==25?'Display':(g?g+'gr':'Otros');}
+function upbFor(g){return BOX_MAP[g]||null;}
+function itemBoxes(it){var g=grOf(it),u=upbFor(g);return u?((+it.qty||0)/u):0;}
+function orderBoxes(o){return (o.items||[]).reduce(function(s,it){return s+itemBoxes(it);},0);}
+function orderUnits(o){return (o.items||[]).reduce(function(s,it){return s+(+it.qty||0);},0);}
+function fmtBoxes(v){return (Math.round(v*10)/10).toLocaleString('es-CO',{maximumFractionDigits:1});}
 let ORDERS=[],DEMO=false,CURMONTH=null,VIEW='list',FACTURADORES=[];
 var TLX_AUTH=(function(){try{return JSON.parse(localStorage.getItem('tlx_contable_auth')||'null')}catch(e){return null}})();
 var READONLY_MODE=!!(TLX_AUTH&&TLX_AUTH.ro);   // solicitante entró como visualizador
@@ -192,7 +207,7 @@ function autoLoadDrive(){const u=syncUrl();if(!u)return;
 function loadCatalogPanel(){const u=syncUrl();if(!u)return;const sep=u.indexOf('?')>=0?'&':'?';
   fetch(u+sep+'resource=catalogo&t='+Date.now(),{cache:'no-store'}).then(r=>r.json()).then(cat=>{if(!cat)return;
     if(cat.clientes&&cat.clientes.length)DBP.clientes=cat.clientes;if(cat.productos&&cat.productos.length)DBP.productos=cat.productos;
-    FACTURADORES=cat.facturadores||[];}).catch(()=>{});}
+    FACTURADORES=cat.facturadores||[];buildDescGr();if(VIEW==='dash')renderDash();}).catch(()=>{});}
 function facturado(o){return String(o.estado||'').toUpperCase()==='FACTURADO';}
 function cityOf(o){const c=DBP.clientes.find(x=>String(x.cedula)===String(o.cliente.cedula));return (c&&c.city)||o.cliente.city||'';}
 function dirOf(o){const c=DBP.clientes.find(x=>String(x.cedula)===String(o.cliente.cedula));return o.cliente.dir||(c&&c.dir)||'';}
@@ -202,7 +217,7 @@ function taxes(o){ // compat: recalcula si faltan
   if(o.icui==null||o.iva==null){o.subtotal=o.subtotal||o.items.reduce((s,x)=>s+x.total,0);o.icui=Math.round(o.subtotal*ICUI);o.iva=Math.round(o.subtotal*IVA);o.total=o.subtotal+o.icui+o.iva;}
   return o;}
 
-function load(){applyReadonlyUI();ORDERS=LS.get('tlx_orders',[]);
+function load(){applyReadonlyUI();buildDescGr();ORDERS=LS.get('tlx_orders',[]);
   if(!ORDERS.length){ORDERS=demoData();DEMO=true;$('#demoBanner').style.display='flex'}
   ORDERS.forEach(taxes);
   ORDERS.sort((a,b)=>new Date(b.fecha||b.creado)-new Date(a.fecha||a.creado));buildMonths();
@@ -218,7 +233,7 @@ function renderAll(){kpis();renderList();topProd();if(VIEW==='dash')renderDash()
 function setView(v){VIEW=v;$('#segList').classList.toggle('on',v==='list');$('#segDash').classList.toggle('on',v==='dash');
   $('#viewList').style.display=v==='list'?'':'none';$('#viewDash').style.display=v==='dash'?'':'none';if(v==='dash')renderDash();}
 function kpis(){const mo=monthOrders();const monto=mo.reduce((s,o)=>s+o.total,0);const cli=new Set(mo.map(o=>o.cliente.cedula)).size;
-  const sub=mo.reduce((s,o)=>s+o.subtotal,0);
+  const sub=mo.reduce((s,o)=>s+o.subtotal,0);const cajasMes=mo.reduce((s,o)=>s+orderBoxes(o),0);
   const prev=CURMONTH?monthOrders(typeof prevKey==='function'?prevKey(CURMONTH):'').reduce((s,o)=>s+o.total,0):0;
   let deltaHTML='<div class="s">ICUI 20% + IVA 5%</div>';
   if(prev){const d=Math.round((monto-prev)/prev*100);deltaHTML=`<div class="d ${d>=0?'up':'down'}">${d>=0?'▲':'▼'} ${Math.abs(d)}% vs mes anterior</div>`;}
@@ -226,7 +241,8 @@ function kpis(){const mo=monthOrders();const monto=mo.reduce((s,o)=>s+o.total,0)
    <div class="kpi"><div class="l">Pedidos del mes</div><div class="v">${mo.length}</div><div class="s">${CURMONTH?mName(CURMONTH):''}</div></div>
    <div class="kpi"><div class="l">Total con impuestos</div><div class="v">${money(monto)}</div>${deltaHTML}</div>
    <div class="kpi"><div class="l">Subtotal (base)</div><div class="v">${money(sub)}</div><div class="s">sin impuestos</div></div>
-   <div class="kpi"><div class="l">Clientes atendidos</div><div class="v">${cli}</div><div class="s">únicos</div></div>`;}
+   <div class="kpi"><div class="l">Clientes atendidos</div><div class="v">${cli}</div><div class="s">únicos</div></div>
+   <div class="kpi" style="border-left-color:#5B47B0"><div class="l">📦 Cajas del mes</div><div class="v">${fmtBoxes(cajasMes)}</div><div class="s">equivalente en cajas</div></div>`;}
 function renderList(){const q=($('#q').value||'').toLowerCase().trim();let list=monthOrders();
   if(q)list=list.filter(o=>(o.folio||'').toLowerCase().includes(q)||o.cliente.nombre.toLowerCase().includes(q)||(o.cliente.cedula||'').includes(q)||o.items.some(i=>i.desc.toLowerCase().includes(q)));
   $('#monthLabel').textContent=CURMONTH?mName(CURMONTH):'—';
@@ -245,19 +261,21 @@ function topProd(){const mo=monthOrders();const agg={};mo.forEach(o=>o.items.for
     return `<div class="bar"><div class="name" title="${n}">${s}</div><div class="track"><div class="fill" style="width:${q/max*100}%"></div></div><div class="val">${q} und</div></div>`;}).join('')||'<div class="empty" style="padding:18px">Sin datos</div>';}
 
 /* ---- Dashboard (Power BI style, interactivo) ---- */
-let charts={}, METRIC='monto', FILT={tier:null,prod:null,sol:null,cli:null};
+let charts={}, METRIC='monto', FILT={tier:null,prod:null,sol:null,cli:null,box:null};
 const short=n=>n.replace('CHOCOLATE TOLIMAX ','').replace('SAN JUANERO ','SJ ').slice(0,18);
-function setMetric(m){METRIC=m;['mMonto','mUnid','mPed'].forEach(id=>$('#'+id).classList.remove('on'));
-  $('#'+{monto:'mMonto',unidades:'mUnid',pedidos:'mPed'}[m]).classList.add('on');renderDash();}
-function fmtMetric(v){return METRIC==='monto'?money(v):v.toLocaleString('es-CO')+(METRIC==='unidades'?' und':' ped');}
+function orderMetric(o){return METRIC==='pedidos'?1:METRIC==='unidades'?orderUnits(o):METRIC==='cajas'?orderBoxes(o):o.total;}
+function setMetric(m){METRIC=m;['mMonto','mUnid','mPed','mCaja'].forEach(id=>{var b=$('#'+id);if(b)b.classList.remove('on');});
+  var t=$('#'+{monto:'mMonto',unidades:'mUnid',pedidos:'mPed',cajas:'mCaja'}[m]);if(t)t.classList.add('on');renderDash();}
+function fmtMetric(v){return METRIC==='monto'?money(v):METRIC==='cajas'?fmtBoxes(v)+' cajas':v.toLocaleString('es-CO')+(METRIC==='unidades'?' und':' ped');}
 function passesFilt(o,exclude){return (exclude==='tier'||!FILT.tier||o.cliente.tier===FILT.tier)
   &&(exclude==='sol'||!FILT.sol||(o.solicitante||'—')===FILT.sol)
   &&(exclude==='cli'||!FILT.cli||o.cliente.nombre===FILT.cli)
+  &&(exclude==='box'||!FILT.box||o.items.some(it=>boxCat(grOf(it))===FILT.box))
   &&(exclude==='prod'||!FILT.prod||o.items.some(it=>it.desc===FILT.prod));}
-function meas(orders){return METRIC==='pedidos'?orders.length:METRIC==='unidades'?orders.reduce((s,o)=>s+o.items.reduce((a,x)=>a+x.qty,0),0):orders.reduce((s,o)=>s+o.total,0);}
+function meas(orders){return METRIC==='pedidos'?orders.length:METRIC==='unidades'?orders.reduce((s,o)=>s+orderUnits(o),0):METRIC==='cajas'?orders.reduce((s,o)=>s+orderBoxes(o),0):orders.reduce((s,o)=>s+o.total,0);}
 function toggleFilt(k,v){FILT[k]=FILT[k]===v?null:v;renderDash();}
 function clearOne(k){FILT[k]=null;renderDash();}
-function clearFilt(){FILT={tier:null,prod:null,sol:null,cli:null};renderDash();}
+function clearFilt(){FILT={tier:null,prod:null,sol:null,cli:null,box:null};renderDash();}
 function renderChips(){const act=Object.entries(FILT).filter(([k,v])=>v);
   $('#filterChips').innerHTML=act.map(([k,v])=>`<span class="chip2" onclick="clearOne('${k}')">${v} ✕</span>`).join('')
     +(act.length?`<span class="chip2" style="background:var(--danger)" onclick="clearFilt()">Limpiar todo</span>`:'');}
@@ -269,20 +287,24 @@ function renderDash(){const k=$('#dashMonth').value||CURMONTH;CURMONTH=k;renderC
     idx=>{CURMONTH=months[idx];$('#dashMonth').value=months[idx];buildMonths();},false);
   const mo=monthOrders(k);
   // Lista de precios (excluye su propio filtro para poder cambiar)
-  const tier={};mo.filter(o=>passesFilt(o,'tier')).forEach(o=>tier[o.cliente.tier]=(tier[o.cliente.tier]||0)+(METRIC==='pedidos'?1:METRIC==='unidades'?o.items.reduce((a,x)=>a+x.qty,0):o.total));
+  const tier={};mo.filter(o=>passesFilt(o,'tier')).forEach(o=>tier[o.cliente.tier]=(tier[o.cliente.tier]||0)+orderMetric(o));
   drawDoughnut('cTier',Object.keys(tier),Object.values(tier),lab=>toggleFilt('tier',lab));
   // Productos
-  const prod={};mo.filter(o=>passesFilt(o,'prod')).forEach(o=>o.items.forEach(it=>prod[it.desc]=(prod[it.desc]||0)+(METRIC==='monto'?it.total:it.qty)));
+  const prod={};mo.filter(o=>passesFilt(o,'prod')).forEach(o=>o.items.forEach(it=>prod[it.desc]=(prod[it.desc]||0)+(METRIC==='monto'?it.total:METRIC==='cajas'?itemBoxes(it):it.qty)));
   const parr=Object.entries(prod).sort((a,b)=>b[1]-a[1]).slice(0,8);
   drawBar('cProd',parr.map(p=>short(p[0])),parr.map(p=>p[1]),'#5E3620',idx=>toggleFilt('prod',parr[idx][0]),true);
   // Solicitante
-  const sol={};mo.filter(o=>passesFilt(o,'sol')).forEach(o=>sol[o.solicitante||'—']=(sol[o.solicitante||'—']||0)+(METRIC==='pedidos'?1:METRIC==='unidades'?o.items.reduce((a,x)=>a+x.qty,0):o.total));
+  const sol={};mo.filter(o=>passesFilt(o,'sol')).forEach(o=>sol[o.solicitante||'—']=(sol[o.solicitante||'—']||0)+orderMetric(o));
   const sarr=Object.entries(sol).sort((a,b)=>b[1]-a[1]);
   drawBar('cSol',sarr.map(s=>s[0]),sarr.map(s=>s[1]),'#2E7D46',idx=>toggleFilt('sol',sarr[idx][0]),false);
   // Top clientes
-  const cli={};mo.filter(o=>passesFilt(o,'cli')).forEach(o=>cli[o.cliente.nombre]=(cli[o.cliente.nombre]||0)+(METRIC==='pedidos'?1:METRIC==='unidades'?o.items.reduce((a,x)=>a+x.qty,0):o.total));
+  const cli={};mo.filter(o=>passesFilt(o,'cli')).forEach(o=>cli[o.cliente.nombre]=(cli[o.cliente.nombre]||0)+orderMetric(o));
   const carr=Object.entries(cli).sort((a,b)=>b[1]-a[1]).slice(0,10);
   drawBar('cCli',carr.map(c=>c[0].slice(0,24)),carr.map(c=>c[1]),'#B77B2B',idx=>toggleFilt('cli',carr[idx][0]),true);
+  // Cajas apiladas por mes/gramaje (siempre en cajas; respeta los demás filtros)
+  const catData={};BOX_CATS.forEach(c=>catData[c]=months.map(()=>0));
+  months.forEach((mm,mi)=>{monthOrders(mm).filter(o=>passesFilt(o,'box')).forEach(o=>o.items.forEach(it=>{const cat=boxCat(grOf(it));if(catData[cat])catData[cat][mi]+=itemBoxes(it);}));});
+  drawStacked('cCajas',months.map(mName),BOX_CATS,catData,cat=>toggleFilt('box',cat));
   kpis();}
 function drawBar(id,labels,data,color,onClick,horizontal){if(charts[id])charts[id].destroy();
   charts[id]=new Chart($('#'+id),{type:'bar',data:{labels,datasets:[{data,backgroundColor:color,borderRadius:6}]},
@@ -292,6 +314,13 @@ function drawBar(id,labels,data,color,onClick,horizontal){if(charts[id])charts[i
 function drawDoughnut(id,labels,data,onClick){if(charts[id])charts[id].destroy();
   charts[id]=new Chart($('#'+id),{type:'doughnut',data:{labels,datasets:[{data,backgroundColor:['#2E7D46','#5B47B0','#C88A2E','#B23B2E']}]},
     options:{plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:c=>' '+c.label+': '+fmtMetric(c.parsed)}}},onClick:(e,el)=>{if(onClick&&el.length)onClick(labels[el[0].index])}}});}
+function drawStacked(id,labels,cats,dataByCat,onClickCat){if(charts[id])charts[id].destroy();
+  const ds=cats.map(c=>({label:c,data:dataByCat[c],backgroundColor:BOX_COLORS[c]||'#999',stack:'cajas',borderRadius:4,borderWidth:0}));
+  charts[id]=new Chart($('#'+id),{type:'bar',data:{labels,datasets:ds},
+    options:{plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:c=>' '+c.dataset.label+': '+fmtBoxes(c.parsed.y)+' cajas',
+      footer:items=>'Total: '+fmtBoxes(items.reduce((s,i)=>s+i.parsed.y,0))+' cajas'}}},
+      scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true,ticks:{callback:v=>v}}},
+      onClick:(e,el)=>{if(el.length)onClickCat(ds[el[0].datasetIndex].label);}}});}
 
 /* ---- Invoice ---- */
 function invoiceHTML(o){taxes(o);let sSub=0,sIc=0,sIv=0;
@@ -456,10 +485,15 @@ function loadFromDrive(){const u=syncUrl()||prompt('Pega la URL del script de Dr
   fetch(u+(u.indexOf('?')>=0?'&':'?')+'t='+Date.now(),{cache:'no-store'}).then(r=>r.json()).then(d=>{if(!Array.isArray(d))throw 0;ORDERS=d;DEMO=false;$('#demoBanner').style.display='none';ORDERS.forEach(taxes);LS.set('tlx_orders',d);CURMONTH=null;
     ORDERS.sort((a,b)=>new Date(b.fecha||b.creado)-new Date(a.fecha||a.creado));buildMonths();loadCatalogPanel();fin();toast(d.length+' pedidos actualizados ✓');}).catch(e=>{fin();toast('No se pudo actualizar. Revisa URL/permisos.');});}
 function exportMonth(){const mo=monthOrders();if(!mo.length){toast('Nada que exportar');return}
-  const head=['Folio','Fecha','Solicitante','Despachador','Cedula','Cliente','Ciudad','Lista','Producto','Obs','Cantidad','V.Unit','Subtotal','ICUI 20%','IVA 5%','Total','Estado','Facturador'];
-  const rows=[head.join(';')];
+  const head=['Folio','Fecha','Solicitante','Despachador','Cedula','Cliente','Ciudad','Lista','Producto','Obs','Cantidad','Gramaje','Und x Caja','Cajas','V.Unit','Subtotal','ICUI 20%','IVA 5%','Total','Estado','Facturador'];
+  const rows=[head.join(';')];const catTot={};let grand=0;
   mo.forEach(o=>o.items.forEach(it=>{const sub=Math.round(it.total),ic=Math.round(sub*ICUI),iv=Math.round(sub*IVA);
-    rows.push([o.folio,o.fecha,o.solicitante||'',o.despachador||'','"'+o.cliente.cedula+'"','"'+o.cliente.nombre+'"','"'+cityOf(o)+'"',o.cliente.tier,'"'+it.desc+'"','"'+(it.obs||'')+'"',it.qty,it.unit,sub,ic,iv,sub+ic+iv,o.estado||'PENDIENTE','"'+(o.facturador||'')+'"'].join(';'));}));
+    const g=grOf(it),upb=upbFor(g),cat=boxCat(g),cajas=upb?((+it.qty||0)/upb):0;
+    if(upb){catTot[cat]=(catTot[cat]||0)+cajas;grand+=cajas;}
+    rows.push([o.folio,o.fecha,o.solicitante||'',o.despachador||'','"'+o.cliente.cedula+'"','"'+o.cliente.nombre+'"','"'+cityOf(o)+'"',o.cliente.tier,'"'+it.desc+'"','"'+(it.obs||'')+'"',it.qty,cat,upb||'',(upb?cajas.toFixed(2).replace('.',','):''),it.unit,sub,ic,iv,sub+ic+iv,o.estado||'PENDIENTE','"'+(o.facturador||'')+'"'].join(';'));}));
+  rows.push('');rows.push('RESUMEN DE CAJAS;'+mName(CURMONTH));
+  BOX_CATS.forEach(c=>{if(catTot[c])rows.push('Cajas '+c+';'+catTot[c].toFixed(2).replace('.',','));});
+  rows.push('TOTAL CAJAS;'+grand.toFixed(2).replace('.',','));
   const b=new Blob(['﻿'+rows.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='TOLIMAX_'+CURMONTH+'.csv';a.click();}
 function clearDemo(){ORDERS=[];DEMO=false;$('#demoBanner').style.display='none';CURMONTH=null;buildMonths();}
 let tt;function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),2500)}
