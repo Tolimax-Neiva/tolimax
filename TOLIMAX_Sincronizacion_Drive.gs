@@ -19,9 +19,15 @@ var FOLDER_ID = '12RiBuZIlOOCyufUnqu9cuF_krFgRqpXU';
 var FOLDER_FACTURAS = 'TOLIMAX - Facturas';
 var DATA_URL = 'https://tolimax-neiva.github.io/tolimax/data.json';
 
+/* Token compartido: DEBE ser idéntico al TLX_TOKEN de index.html y panel.html.
+   Protege las escrituras (guardar / editar / eliminar / facturar / clientes / productos).
+   Las lecturas (catálogo, pedidos, login) quedan abiertas. Cámbialo por uno propio. */
+var TOKEN = 'TLX_x7Qm3Kp9Za';
+
 var HEADER = ['Folio','Fecha','Solicitante','Despachador','Cedula','Cliente','Lista','Forma de pago',
   'Producto','Cantidad','Subtotal.Unit','Subtotal.Linea','Subtotal','ICUI','IVA','Total','Registrado',
-  'ObsItem','Estado','Facturador','FechaFactura','ObsFactura'];
+  'ObsItem','Estado','Facturador','FechaFactura','ObsFactura',
+  'ClienteId','EstadoProd','Pagado','FechaPago'];   // columnas nuevas (se agregan al final para no mover las anteriores)
 
 function ahora() { return Utilities.formatDate(new Date(), 'America/Bogota', 'yyyy-MM-dd HH:mm:ss'); }
 
@@ -48,6 +54,7 @@ function doPost(e) {
   var lock = LockService.getScriptLock(); lock.waitLock(30000);
   try {
     var body = JSON.parse(e.postData.contents);
+    if (String(body.token || '') !== TOKEN) return json({ ok: false, error: 'AUTH' });   // token en escrituras
     var a = body.action || 'pedido';
     if (a === 'addCliente') return json(saveCliente(body.cliente, false));
     if (a === 'updateCliente') return json(saveCliente(body.cliente, true));
@@ -58,6 +65,8 @@ function doPost(e) {
     if (a === 'facturar') return json(facturar(body));
     if (a === 'updatePedido') return json(updatePedido(body));
     if (a === 'deletePedido') return json(deletePedido(body));
+    if (a === 'estadoProd') return json(setEstadoProd(body));
+    if (a === 'marcarPago') return json(marcarPago(body));
     return json(guardarPedido(body));
   } catch (err) { return json({ ok: false, error: String(err) }); } finally { lock.releaseLock(); }
 }
@@ -68,13 +77,48 @@ function pedSheet() { var sh = SpreadsheetApp.openById(PEDIDOS_ID).getSheets()[0
 function filaPedido(order, it) {
   return [order.folio, order.fecha, order.solicitante, order.despachador, order.cliente.cedula, order.cliente.nombre,
     order.cliente.tier, order.cliente.pago || '', it.desc, it.qty, it.unit, it.total, order.subtotal, order.icui,
-    order.iva, order.total, ahora(), it.obs || '', 'PENDIENTE', '', '', ''];
+    order.iva, order.total, ahora(), it.obs || '', 'PENDIENTE', '', '', '',
+    order.cid || '', 'PENDIENTE', 'NO', ''];
+}
+/* Consecutivo oficial: lo asigna el servidor (bajo lock en doPost) para evitar folios duplicados. */
+function nextFolio(sh) {
+  var v = sh.getDataRange().getValues(); var max = 0;
+  for (var i = 1; i < v.length; i++) {
+    var f = String(v[i][0] || ''); if (!/Orden de Pedido/i.test(f)) continue;
+    var m = /(\d+)\s*$/.exec(f); if (m) { var n = parseInt(m[1], 10); if (n > max) max = n; }
+  }
+  return 'Orden de Pedido -' + ('0000' + (max + 1)).slice(-4);
 }
 function guardarPedido(order) {
   var sh = pedSheet();
+  var cid = order.cid || '';
+  if (cid) {   // idempotencia: si el pedido (por cid) ya existe, no lo dupliques (reintentos de la cola offline)
+    var v = sh.getDataRange().getValues();
+    for (var i = 1; i < v.length; i++) if (String(v[i][22] || '') === String(cid)) {
+      return { ok: true, folio: String(v[i][0]), cid: cid, dup: true };
+    }
+  }
+  order.folio = nextFolio(sh);   // el navegador manda un folio provisional; el consecutivo real lo pone el servidor
   order.items.forEach(function (it) { sh.appendRow(filaPedido(order, it)); });
   guardarFactura(order);
-  return { ok: true, folio: order.folio };
+  return { ok: true, folio: order.folio, cid: cid };
+}
+/* Estado de producción: PENDIENTE / EN_PRODUCCION / DESPACHADO (col 24) */
+function setEstadoProd(body) {
+  var sh = pedSheet(); var v = sh.getDataRange().getValues(); var n = 0;
+  for (var i = 1; i < v.length; i++) if (String(v[i][0]) === String(body.folio)) {
+    sh.getRange(i + 1, 24, 1, 1).setValue(body.estado || 'PENDIENTE'); n++;
+  }
+  return { ok: n > 0, folio: body.folio, estadoProd: body.estado };
+}
+/* Cartera: marca el pedido como Pagado SI/NO (cols 25-26) */
+function marcarPago(body) {
+  var sh = pedSheet(); var v = sh.getDataRange().getValues(); var n = 0;
+  var pagado = body.pagado === false ? 'NO' : 'SI'; var fp = pagado === 'SI' ? ahora() : '';
+  for (var i = 1; i < v.length; i++) if (String(v[i][0]) === String(body.folio)) {
+    sh.getRange(i + 1, 25, 1, 2).setValues([[pagado, fp]]); n++;
+  }
+  return { ok: n > 0, folio: body.folio, pagado: pagado };
 }
 function updatePedido(order) {
   var sh = pedSheet();
@@ -118,7 +162,7 @@ function saveCliente(c, update) {
 }
 function saveProducto(p) {
   var sh = hoja('precios');
-  function b(base) { base = Math.round(base || 0); return [base, Math.round(base * 0.2), Math.round(base * 0.05), Math.round(base * 1.25)]; }
+  function b(base) { base = Math.round(base || 0); return [base, Math.round(base * 0.2), Math.round(base * 0.05), base]; }   // la base ES el precio de venta
   var row = [p.desc, p.gramos || ''].concat(b(p.comercial)).concat(b(p.distribuidor)).concat(b(p.mayorista));
   var v = sh.getDataRange().getValues();
   for (var i = 1; i < v.length; i++) if (String(v[i][0]).trim().toUpperCase() === String(p.descOriginal || p.desc).trim().toUpperCase()) {
@@ -154,7 +198,8 @@ function getPedidos() {
     if (!by[folio]) by[folio] = { folio: folio, fecha: r[1], solicitante: r[2], despachador: r[3],
       cliente: { cedula: String(r[4]), nombre: r[5], tier: r[6], pago: r[7] }, items: [],
       subtotal: r[12], icui: r[13], iva: r[14], total: r[15], registrado: r[16] || '',
-      estado: r[18] || 'PENDIENTE', facturador: r[19] || '', fechaFactura: r[20] || '', obsFactura: r[21] || '' };
+      estado: r[18] || 'PENDIENTE', facturador: r[19] || '', fechaFactura: r[20] || '', obsFactura: r[21] || '',
+      cid: r[22] || '', estadoProd: r[23] || 'PENDIENTE', pagado: String(r[24] || 'NO'), fechaPago: r[25] || '' };
     by[folio].items.push({ desc: r[8], qty: r[9], unit: r[10], total: r[11], obs: r[17] || '' });
   });
   return Object.keys(by).map(function (k) { return by[k]; });

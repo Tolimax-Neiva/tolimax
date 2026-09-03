@@ -177,6 +177,7 @@ body.ordering #bgvid,body.ordering #bgvid-ov{opacity:0;pointer-events:none}
       <span class="sub">Pedidos de<br>producción</span>
     </div>
     <div class="topActions">
+      <span id="syncBadge" style="display:none;align-items:center;gap:6px;background:rgba(224,176,103,.16);border:1px solid rgba(224,176,103,.45);color:#F3DDB0;border-radius:999px;padding:8px 13px;font-size:12px;font-weight:800;white-space:nowrap;cursor:pointer" title="Reintentar sincronización" onclick="flushQueue()"></span>
       <button id="btnVerPanel" class="topbtn hidden" onclick="verPanelContable()">👁 Panel contable</button>
     </div>
   </header>
@@ -245,6 +246,7 @@ let DB=window.TOLIMAX_DATA||{clientes:[],productos:[],empresa:{}};
 const LS={get:(k,d)=>{try{const v=localStorage.getItem(k);return v===null?d:JSON.parse(v)}catch(e){return d}},set:(k,v)=>localStorage.setItem(k,JSON.stringify(v))};
 const $=s=>document.querySelector(s);
 const DEFAULT_SYNC='https://script.google.com/macros/s/AKfycbysly2NjPXQAUqwrxjn8Qwb4KS3RFxsI0OtPPcz-58ZpRYn1Zx3_QqAPWtQI3XZE24vvg/exec';
+const TLX_TOKEN='TLX_x7Qm3Kp9Za';   // debe coincidir con el TOKEN del Apps Script (.gs)
 let CFG=LS.get('tlx_cfg',{syncUrl:'',solicitantes:['Producción 1','Producción 2'],despachadores:['Despachador 1','Despachador 2']});
 if(!CFG.syncUrl)CFG.syncUrl=DEFAULT_SYNC;   // conexión a Drive fija (funciona en cualquier dispositivo)
 function saveCfg(){LS.set('tlx_cfg',CFG)}
@@ -257,6 +259,31 @@ function localDay(x){const d=x?new Date(x):new Date();if(isNaN(d))return String(
 function ordNum(f){const m=/(\d+)\s*$/.exec(f||'');return m?parseInt(m[1]):0;}
 function fmtFolio(n){return 'Orden de Pedido -'+String(n).padStart(4,'0');}
 const ICUI=0.20, IVA=0.05;   // impuesto ultraprocesados 20% + IVA 5%
+let CUR_CID=null;   // cid del pedido en edición
+/* ---- Cajas por gramaje (mismas equivalencias que el panel contable) ---- */
+const BOX_MAP={200:120,250:100,400:60,25:12};
+function grOf(desc){const p=DB.productos.find(x=>x.desc===desc);let g=p&&p.gramos?+p.gramos:null;
+  if(g==null){const m=/(\d+)\s*GR/i.exec(desc||'');g=m?+m[1]:null;}return g;}
+function upbOf(desc){return BOX_MAP[grOf(desc)]||null;}
+/* ---- Cola de sincronización: pedidos guardados que aún no se confirman en Drive ---- */
+function newCid(){return 'c'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+function queueGet(){return LS.get('tlx_queue',[]);}
+function queueSet(q){LS.set('tlx_queue',q);updateSyncBadge();}
+function queueUpsert(item){const q=queueGet();const ix=q.findIndex(x=>x.cid===item.cid);if(ix>=0)q[ix]=item;else q.push(item);queueSet(q);}
+function queueRemove(cid){queueSet(queueGet().filter(x=>x.cid!==cid));}
+function updateSyncBadge(){const b=$('#syncBadge');if(!b)return;const n=queueGet().length;
+  if(!n){b.style.display='none';return;}b.style.display='inline-flex';b.textContent='⟳ '+n+' sin sincronizar';}
+function flushQueue(){if(!CFG.syncUrl)return;if(navigator.onLine===false)return;const q=queueGet();if(!q.length)return;
+  fetchOrders().then(function(d){if(!Array.isArray(d))return;ALLORDERS=d;var changed=false;
+    q.forEach(function(item){
+      var found=item.editing?d.find(function(o){return o.folio===item.folio;}):d.find(function(o){return o.cid&&o.cid===item.cid;});
+      if(found){queueRemove(item.cid);changed=true;
+        if(!item.editing&&found.folio){var all=LS.get('tlx_orders',[]);var li=all.findIndex(function(x){return x.cid===item.cid;});
+          if(li>=0&&all[li].folio!==found.folio){all[li].folio=found.folio;LS.set('tlx_orders',all);}}
+      }else{postOrder(item.payload);}   // reintenta el envío
+    });
+    if(changed)renderOrders();
+  }).catch(function(){});}
 
 function applyCatalog(cat){if(!cat)return;
   if(cat.clientes&&cat.clientes.length)DB.clientes=cat.clientes;
@@ -288,7 +315,7 @@ function entrarPedidos(){$('#whoChip').textContent=SESSION.solicitante;
   $('#screen1').classList.add('hidden');$('#area2').classList.remove('hidden');
   document.body.classList.add('ordering');$('#area2').classList.add('enterFade');
   var vp=$('#btnVerPanel');if(vp)vp.classList.remove('hidden');
-  $('#clave').value='';nuevoPedido();refreshOrders();window.scrollTo(0,0);}
+  $('#clave').value='';nuevoPedido();refreshOrders();updateSyncBadge();flushQueue();window.scrollTo(0,0);}
 function volver(){$('#area2').classList.add('hidden');$('#screen1').classList.remove('hidden');document.body.classList.remove('ordering');var vp=$('#btnVerPanel');if(vp)vp.classList.add('hidden');fillPeople()}
 function verPanelContable(){LS.set('tlx_contable_auth',{user:SESSION.solicitante||'Solicitante',ts:Date.now(),ro:true});
   window.open('panel.html','_blank');}
@@ -296,28 +323,33 @@ function tierOf(c){const t=(c.tipo||'COMERCIAL').toUpperCase();return (t==='MAYO
 function setupCombo(){const inp=$('#clienteInput'),list=$('#clienteList');
   const render=q=>{q=(q||'').trim().toLowerCase();let a=DB.clientes;
     if(q)a=a.filter(c=>c.nombre.toLowerCase().includes(q)||c.cedula.includes(q)||(c.dir||'').toLowerCase().includes(q));a=a.slice(0,30);
-    list.innerHTML=a.map(c=>`<div class="opt" data-c="${c.cedula}"><b>${c.nombre}</b><small class="dir">📍 ${c.dir||'Sin dirección'}${c.city?' · '+c.city:''}</small><small>CC ${c.cedula} <span class="tag ${tierOf(c)}">${c.tipo}</span></small></div>`).join('')||'<div class="opt"><small>Sin resultados</small></div>';
-    list.classList.add('open');list.querySelectorAll('.opt[data-c]').forEach(o=>o.onclick=()=>selCliente(o.dataset.c));};
+    list.innerHTML=a.map(c=>`<div class="opt" data-i="${DB.clientes.indexOf(c)}"><b>${c.nombre}</b><small class="dir">📍 ${c.dir||'Sin dirección'}${c.city?' · '+c.city:''}</small><small>CC ${c.cedula} <span class="tag ${tierOf(c)}">${c.tipo}</span></small></div>`).join('')||'<div class="opt"><small>Sin resultados</small></div>';
+    list.classList.add('open');list.querySelectorAll('.opt[data-i]').forEach(o=>o.onclick=()=>selCliente(o.dataset.i));};
   inp.addEventListener('focus',()=>render(inp.value));inp.addEventListener('input',()=>render(inp.value));
   document.addEventListener('click',e=>{if(!$('#clienteCombo').contains(e.target))list.classList.remove('open')});}
-function selCliente(ced){CLIENTE=DB.clientes.find(c=>c.cedula===ced);$('#clienteInput').value=CLIENTE.nombre;$('#clienteList').classList.remove('open');
-  $('#clienteInfo').innerHTML='CC '+CLIENTE.cedula+' · '+(CLIENTE.city||'')+' · '+CLIENTE.tipo;}
+function selCliente(i){CLIENTE=DB.clientes[+i];if(!CLIENTE)return;$('#clienteInput').value=CLIENTE.nombre;$('#clienteList').classList.remove('open');
+  $('#clienteInfo').innerHTML='CC '+CLIENTE.cedula+' · '+(CLIENTE.dir||'')+' · '+(CLIENTE.city||'')+' · '+CLIENTE.tipo;}
 function addLine(){LINES.push({desc:'',qty:1,obs:''});renderLines()}
 function renderLines(){const used=LINES.map(l=>l.desc).filter(Boolean);const dis=READONLY?'disabled':'';
   $('#lines').innerHTML=LINES.map((l,i)=>{
     const opts=DB.productos.map(p=>{const taken=p.desc!==l.desc&&used.includes(p.desc);
       return `<option value="${p.desc}" ${p.desc===l.desc?'selected':''} ${taken?'disabled':''}>${p.desc}${taken?' (ya agregado)':''}</option>`;}).join('');
+    const upb=upbOf(l.desc);const cajas=upb?(l.qty/upb):0;
+    const cajasField=upb?`<div class="q"><label class="fld">Cajas <small>(${upb}/caja)</small></label>
+        <input type="number" min="0" step="0.5" value="${cajas?(+cajas.toFixed(2)):''}" class="inp" ${dis} placeholder="0" onchange="setCajas(${i},this.value)"></div>`:'';
     return `<div class="line">${READONLY?'':`<button class="del" onclick="delLine(${i})">×</button>`}
       <label class="fld" style="margin-top:0">Producto ${i+1}</label>
       <select class="inp" ${dis} onchange="setProd(${i},this.value)"><option value="">— Selecciona —</option>${opts}</select>
-      <div class="qtyrow"><div class="q"><label class="fld">Cantidad</label>
-        <input type="number" min="1" step="1" value="${l.qty}" class="inp" ${dis} onchange="setQty(${i},this.value)"></div></div>
+      <div class="qtyrow"><div class="q"><label class="fld">Cantidad <small>(und)</small></label>
+        <input type="number" min="1" step="1" value="${l.qty}" class="inp" ${dis} onchange="setQty(${i},this.value)"></div>${cajasField}</div>
       <label class="fld">Observación <small>(opcional)</small></label>
       <input class="inp" ${dis} placeholder="Ej: sin azúcar, empaque especial…" value="${(l.obs||'').replace(/"/g,'&quot;')}" onchange="setObs(${i},this.value)"></div>`;}).join('');
   $('#totUnits').textContent=LINES.reduce((s,l)=>s+(l.desc?l.qty:0),0);
   $('#addProdBtn').style.display=READONLY?'none':'';}
 function setProd(i,d){LINES[i].desc=d;renderLines()}
 function setQty(i,v){LINES[i].qty=Math.max(1,parseInt(v)||1);renderLines()}
+function setCajas(i,v){const upb=upbOf(LINES[i].desc);if(!upb){renderLines();return;}
+  const c=Math.max(0,parseFloat(v)||0);LINES[i].qty=Math.max(1,Math.round(c*upb));renderLines();}
 function setObs(i,v){LINES[i].obs=v;}
 function delLine(i){LINES.splice(i,1);if(!LINES.length)addLine();else renderLines()}
 function refreshOrders(toastIt){if(!CFG.syncUrl){renderOrders();return;}
@@ -327,7 +359,7 @@ function refreshOrders(toastIt){if(!CFG.syncUrl){renderOrders();return;}
     updateFolioHint();renderOrders();if(toastIt)toast('Órdenes actualizadas ✓');}).catch(()=>{renderOrders();});}
 function updateFolioHint(){const h=$('#folioHint');if(!h)return;
   if(EDIT_FOLIO)h.innerHTML='<b>'+EDIT_FOLIO+'</b>'+(READONLY?' · 🔒 facturado (solo lectura)':' · editando');
-  else h.innerHTML='Solicita: '+SESSION.solicitante+' · Próxima: <b>'+fmtFolio(NEXTNUM)+'</b>';}
+  else h.innerHTML='Solicita: '+SESSION.solicitante+' · Próxima (aprox.): <b>'+fmtFolio(NEXTNUM)+'</b>';}
 function hace(x){const d=new Date(x);if(isNaN(d))return '';let s=Math.floor((Date.now()-d.getTime())/1000);if(s<0)s=0;
   if(s<60)return 'hace '+s+' s';const m=Math.floor(s/60);if(m<60)return 'hace '+m+' min';
   const h=Math.floor(m/60);if(h<24)return 'hace '+h+' h '+(m%60)+' min';const dd=Math.floor(h/24);return 'hace '+dd+' d';}
@@ -345,9 +377,9 @@ function renderOrders(){const box=$('#ordersList');if(!box)return;
     ||'<div class="mini" style="padding:14px">Sin órdenes activas.</div>';if(full.length>10)box.innerHTML+='<div style="padding:12px 14px;text-align:center;border-top:1px solid #efe2cf"><span class="link" style="color:var(--cacao-600)" onclick="toggleOrders()">'+(ORDERS_EXPANDED?'▲ Ver menos':'▾ Ver más ('+(full.length-10)+')')+'</span></div>';}
 let LOCK_REASON='';
 function loadOrder(folio){const o=ALLORDERS.find(x=>x.folio===folio);if(!o)return;
-  EDIT_FOLIO=folio;const fact=(o.estado||'').toUpperCase()==='FACTURADO';const own=o.solicitante===SESSION.solicitante;
+  EDIT_FOLIO=folio;CUR_CID=o.cid||null;const fact=(o.estado||'').toUpperCase()==='FACTURADO';const own=o.solicitante===SESSION.solicitante;
   READONLY=fact||!own;LOCK_REASON=fact?'🔒 Pedido facturado — solo lectura':(!own?'👁 Pedido de '+(o.solicitante||'otro solicitante')+' — solo lectura':'');
-  CLIENTE=DB.clientes.find(c=>String(c.cedula)===String(o.cliente.cedula))||{...o.cliente};
+  CLIENTE=Object.assign({},DB.clientes.find(c=>String(c.cedula)===String(o.cliente.cedula))||{},o.cliente);   // la sucursal guardada en el pedido manda (cédulas repetidas)
   $('#clienteInput').value=o.cliente.nombre;
   $('#clienteInfo').innerHTML='CC '+o.cliente.cedula+' · '+((CLIENTE&&CLIENTE.city)||'')+' · '+(o.cliente.tier||'');
   LINES=o.items.map(it=>({desc:it.desc,qty:+it.qty||1,obs:it.obs||''}));if(!LINES.length)LINES=[{desc:'',qty:1,obs:''}];
@@ -361,9 +393,10 @@ function updateSendBtn(){const b=$('#btnSend'),ln=$('#lockNote'),bd=$('#btnDel')
     if(bd)bd.style.display=EDIT_FOLIO?'block':'none';}}
 function eliminarPedido(){if(!EDIT_FOLIO||READONLY)return;
   if(!confirm('¿Eliminar '+EDIT_FOLIO+'?\nEsta acción no se puede deshacer.'))return;
-  if(CFG.syncUrl){try{fetch(CFG.syncUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'deletePedido',folio:EDIT_FOLIO})}).catch(()=>{});}catch(e){}}
+  if(CFG.syncUrl){try{fetch(CFG.syncUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({token:TLX_TOKEN,action:'deletePedido',folio:EDIT_FOLIO})}).catch(()=>{});}catch(e){}}
   const all=LS.get('tlx_orders',[]).filter(x=>x.folio!==EDIT_FOLIO);LS.set('tlx_orders',all);
   toast('Pedido eliminado 🗑');setTimeout(function(){refreshOrders();},1300);nuevoPedido();}
+let PENDING=null;   // pedido en curso pendiente de confirmar en Drive
 function enviarPedido(){if(READONLY)return;if(!CLIENTE){toast('Selecciona un cliente');return}
   const valid=LINES.filter(l=>l.desc&&l.qty>0);if(!valid.length){toast('Agrega al menos un producto');return}
   const tier=tierOf(CLIENTE);
@@ -372,25 +405,72 @@ function enviarPedido(){if(READONLY)return;if(!CLIENTE){toast('Selecciona un cli
   const icui=items.reduce((s,x)=>s+Math.round(x.total*ICUI),0);
   const iva=items.reduce((s,x)=>s+Math.round(x.total*IVA),0);
   const total=subtotal+icui+iva;
-  const editing=!!EDIT_FOLIO;const folio=editing?EDIT_FOLIO:fmtFolio(NEXTNUM);
-  const order={folio,fecha:$('#fecha').value,creado:new Date().toISOString(),solicitante:SESSION.solicitante,despachador:SESSION.despachador,
+  const editing=!!EDIT_FOLIO;const cid=editing?(CUR_CID||newCid()):newCid();
+  const folio=editing?EDIT_FOLIO:fmtFolio(NEXTNUM);   // en pedidos nuevos el folio definitivo lo asigna el servidor
+  const order={folio,cid,fecha:$('#fecha').value,creado:new Date().toISOString(),solicitante:SESSION.solicitante,despachador:SESSION.despachador,
     cliente:{...CLIENTE,tier},items,subtotal,icui,iva,total};
   const payload=editing?Object.assign({action:'updatePedido'},order):order;
-  if(CFG.syncUrl){try{fetch(CFG.syncUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)}).catch(()=>{});}catch(e){}}
-  const all=LS.get('tlx_orders',[]);const ix=all.findIndex(x=>x.folio===folio);if(ix>=0)all[ix]=order;else all.push(order);LS.set('tlx_orders',all);
-  setTimeout(function(){refreshOrders();},1400);
-  showConfirm(order,editing);}
-function showConfirm(o,editing){ // SIN precios para el despachador
+  const all=LS.get('tlx_orders',[]);const ix=all.findIndex(x=>(x.cid&&x.cid===cid)||x.folio===folio);if(ix>=0)all[ix]=order;else all.push(order);LS.set('tlx_orders',all);
+  PENDING={payload,order,editing,cid};
+  queueUpsert({cid,payload,editing,folio,ts:Date.now()});
+  postOrder(payload);
+  if(!CFG.syncUrl){queueRemove(cid);showConfirm(order,editing,'local');return;}   // sin Drive: guardado solo local
+  showSaving(order,editing);verifySaved(order,editing);}
+function postOrder(payload){if(!CFG.syncUrl)return;
+  try{fetch(CFG.syncUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(Object.assign({token:TLX_TOKEN},payload))}).catch(function(){});}catch(e){}}
+function fetchOrders(){return fetch(CFG.syncUrl+(CFG.syncUrl.indexOf('?')>=0?'&':'?')+'t='+Date.now(),{cache:'no-store'}).then(r=>r.json());}
+/* Confirma de forma independiente que el pedido realmente llegó a Drive (relee la base y busca el folio). */
+function verifySaved(order,editing){const want=order.items.reduce((s,x)=>s+(+x.qty||0),0);let tries=0;const max=5;
+  const attempt=function(){tries++;
+    fetchOrders().then(function(d){
+      if(Array.isArray(d)){ALLORDERS=d;
+        const found=editing?d.find(function(o){return o.folio===order.folio;})
+                           :d.find(function(o){return o.cid&&o.cid===order.cid;});   // nuevos: por cid → folio real del servidor
+        const ok=found&&(!editing||found.items.reduce(function(s,x){return s+(+x.qty||0);},0)===want);
+        if(ok){
+          if(!editing&&found.folio&&found.folio!==order.folio){   // adoptar el folio definitivo asignado por el servidor
+            const all=LS.get('tlx_orders',[]);const li=all.findIndex(function(x){return x.cid===order.cid;});
+            if(li>=0){all[li].folio=found.folio;LS.set('tlx_orders',all);}order.folio=found.folio;}
+          const nums=d.filter(function(o){return /Orden de Pedido/i.test(o.folio||'');}).map(function(o){return ordNum(o.folio);});
+          NEXTNUM=(nums.length?Math.max.apply(null,nums):0)+1;updateFolioHint();renderOrders();
+          queueRemove(order.cid);PENDING=null;showConfirm(order,editing,'ok');return;}}
+      if(tries<max)setTimeout(attempt,2000);else showSaveWarning(order,editing);
+    }).catch(function(){if(tries<max)setTimeout(attempt,2000);else showSaveWarning(order,editing);});
+  };
+  setTimeout(attempt,1200);}
+function reintentarGuardar(){if(!PENDING)return;postOrder(PENDING.payload);showSaving(PENDING.order,PENDING.editing);verifySaved(PENDING.order,PENDING.editing);}
+function showSaving(o,editing){
+  $('#modal').innerHTML=`<div class="mh"><b>${editing?'Guardando cambios…':'Enviando pedido…'}</b></div>
+    <div class="rc" style="text-align:center;padding:32px 20px">
+      <div style="width:46px;height:46px;border:4px solid #e7d9c4;border-top-color:var(--gold);border-radius:50%;margin:0 auto 16px;animation:spin .8s linear infinite"></div>
+      <b style="color:var(--cacao-700);font-size:18px">${o.folio}</b>
+      <div style="color:var(--muted);font-size:13px;margin-top:8px">Confirmando en Drive…</div></div>`;
+  $('#overlay').classList.add('open');}
+function showConfirm(o,editing,state){ // SIN precios para el despachador
   const items=o.items.map(it=>`<div class="it"><span>${it.desc}${it.obs?'<br><small style="color:var(--muted)">'+it.obs+'</small>':''}</span><b>${it.qty} und</b></div>`).join('');
+  const badge=state==='ok'
+    ?'<div style="text-align:center;margin-bottom:12px"><span style="background:#EAF3EA;color:#2E7D46;font-size:11px;font-weight:800;padding:4px 11px;border-radius:999px">✓ Confirmado en Drive</span></div>'
+    :state==='local'
+    ?'<div style="text-align:center;margin-bottom:12px"><span style="background:#ece5db;color:#8a6f5c;font-size:11px;font-weight:800;padding:4px 11px;border-radius:999px">💾 Guardado en este dispositivo</span></div>'
+    :'';
   $('#modal').innerHTML=`<div class="mh"><b>${editing?'Pedido actualizado':'Pedido enviado'}</b><button class="x" onclick="closeModal()">×</button></div>
     <div class="rc"><div class="ok-check">✓</div>
     <div style="text-align:center;margin-bottom:6px"><b style="color:var(--cacao-700);font-size:18px">${o.folio}</b></div>
     <div style="text-align:center;color:var(--muted);font-size:13px;margin-bottom:14px">${o.cliente.nombre}</div>
-    ${items}
+    ${badge}${items}
     <div class="it" style="border:none;margin-top:6px"><span>Total unidades</span><b>${o.items.reduce((s,x)=>s+x.qty,0)} und</b></div></div>
     <div class="mfoot"><button class="btn btn-primary" onclick="closeModal();nuevoPedido()">＋ Otra orden</button></div>`;
   $('#overlay').classList.add('open');}
-function nuevoPedido(){EDIT_FOLIO=null;READONLY=false;CLIENTE=null;LINES=[];
+function showSaveWarning(o,editing){
+  $('#modal').innerHTML=`<div class="mh"><b>⚠ Sin confirmar</b><button class="x" onclick="closeModal()">×</button></div>
+    <div class="rc" style="padding:22px 20px;text-align:center">
+      <div style="width:60px;height:60px;border-radius:50%;background:#fbf0d8;color:#b06a00;font-size:32px;font-weight:800;display:flex;align-items:center;justify-content:center;margin:0 auto 12px">!</div>
+      <b style="color:var(--cacao-700);font-size:17px">${o.folio}</b>
+      <div style="color:var(--muted);font-size:13.5px;margin-top:10px;line-height:1.55">El pedido quedó guardado en <b>este dispositivo</b>, pero no pudimos confirmar que llegó a Drive. Suele ser la conexión.</div></div>
+    <div class="mfoot"><button class="btn btn-primary" onclick="reintentarGuardar()">🔄 Reintentar</button>
+      <button class="btn btn-ghost" onclick="closeModal();nuevoPedido()">Continuar igual</button></div>`;
+  $('#overlay').classList.add('open');}
+function nuevoPedido(){EDIT_FOLIO=null;CUR_CID=null;READONLY=false;CLIENTE=null;LINES=[];
   $('#clienteInput').value='';$('#clienteInfo').textContent='';$('#pedTitle').textContent='Nuevo pedido';
   const n=new Date();n.setMinutes(n.getMinutes()-n.getTimezoneOffset());$('#fecha').value=n.toISOString().slice(0,16);
   addLine();updateFolioHint();updateSendBtn();renderOrders();window.scrollTo(0,0);}
@@ -419,6 +499,7 @@ function closeModal(){$('#overlay').classList.remove('open')}
 $('#overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeModal()});
 let tt;function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),2500)}
 applyCatalog(LS.get('tlx_catalog',null));fillPeople();setupCombo();if(CFG.syncUrl)loadCatalog(true);if(location.hash==='#contable'){setEntryTab('con');}
+updateSyncBadge();window.addEventListener('online',flushQueue);setInterval(flushQueue,30000);   // reintenta pedidos sin sincronizar
 /* ---- Video de fondo ---- */
 function playBg(){var v=document.getElementById('bgvid');if(v&&v.play)v.play().catch(function(){});}
 playBg();document.addEventListener('touchstart',playBg,{once:true});document.addEventListener('click',playBg,{once:true});

@@ -162,6 +162,8 @@ table.orders tbody tr{cursor:pointer}table.orders tbody tr:hover{background:var(
       <div class="chartcard"><h4>Top productos <small>(clic = filtrar)</small></h4><canvas id="cProd"></canvas></div>
       <div class="chartcard"><h4>Por solicitante <small>(clic = filtrar)</small></h4><canvas id="cSol"></canvas></div>
       <div class="chartcard" style="grid-column:1/-1"><h4>Top 10 clientes del mes <small>(Pareto)</small></h4><canvas id="cCli" style="max-height:300px"></canvas></div>
+      <div class="chartcard"><h4>😴 Clientes inactivos <small>(sin comprar hace +30 días)</small></h4><div id="inactivos" style="max-height:280px;overflow:auto"></div></div>
+      <div class="chartcard"><h4>🐌 Baja rotación del mes <small>(productos con menos venta)</small></h4><div id="bajarot" style="max-height:280px;overflow:auto"></div></div>
     </div>
   </div>
 </div>
@@ -174,6 +176,16 @@ const EMP=DBP.empresa||{nombre:'TOLIMAX S.A.',dir:'Calle 26 Sur # 5-86 Zona Indu
 EMP.mail='tesoreria@tolimax.com.co';   // correo de facturación
 const money=n=>'$'+Math.round(n).toLocaleString('es-CO');
 const $=s=>document.querySelector(s);
+/* ---- Helpers de validación / cartera ---- */
+const normSpaces=s=>(s||'').replace(/\s+/g,' ').trim();
+const validEmail=e=>!e||/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+function termDays(p){const m=/(\d+)\s*DIAS/i.exec(p||'');return m?+m[1]:0;}
+function dueDate(o){const t=termDays(o.cliente&&o.cliente.pago);if(!t)return '';
+  const base=new Date(o.fechaFactura||o.fecha||o.creado);if(isNaN(base))return '';
+  return new Date(base.getTime()+t*86400000).toLocaleDateString('es-CO',{day:'2-digit',month:'short'});}
+function esCredito(o){return /CREDITO/i.test((o.cliente&&o.cliente.pago)||'');}
+function estaPagado(o){return String(o.pagado||'NO').toUpperCase()==='SI';}
+function porCobrar(o){return facturado(o)&&esCredito(o)&&!estaPagado(o);}
 const MES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const LS={get:(k,d)=>{try{const v=localStorage.getItem(k);return v===null?d:JSON.parse(v)}catch(e){return d}},set:(k,v)=>localStorage.setItem(k,JSON.stringify(v))};
 const ICUI=0.20,IVA=0.05;
@@ -199,6 +211,7 @@ function applyReadonlyUI(){if(!READONLY_MODE)return;
   var be=document.getElementById('btnExportar');if(be){be.style.background='var(--gold)';be.style.color='#2A1710';be.style.borderColor='var(--gold)';be.style.fontWeight='800';be.style.boxShadow='0 3px 10px rgba(200,138,46,.45)';}
   document.title='TOLIMAX · Panel (solo lectura)';}
 const DEFAULT_SYNC='https://script.google.com/macros/s/AKfycbysly2NjPXQAUqwrxjn8Qwb4KS3RFxsI0OtPPcz-58ZpRYn1Zx3_QqAPWtQI3XZE24vvg/exec';
+const TLX_TOKEN='TLX_x7Qm3Kp9Za';   // debe coincidir con el TOKEN del Apps Script (.gs)
 function syncUrl(){return ((LS.get('tlx_cfg',{})||{}).syncUrl)||DEFAULT_SYNC}
 function autoLoadDrive(){const u=syncUrl();if(!u)return;
   fetch(u+(u.indexOf('?')>=0?'&':'?')+'t='+Date.now(),{cache:'no-store'}).then(r=>r.json()).then(d=>{if(Array.isArray(d)&&d.length){ORDERS=d;DEMO=false;const b=$('#demoBanner');if(b)b.style.display='none';
@@ -209,7 +222,7 @@ function loadCatalogPanel(){const u=syncUrl();if(!u)return;const sep=u.indexOf('
     if(cat.clientes&&cat.clientes.length)DBP.clientes=cat.clientes;if(cat.productos&&cat.productos.length)DBP.productos=cat.productos;
     FACTURADORES=cat.facturadores||[];buildDescGr();if(VIEW==='dash')renderDash();}).catch(()=>{});}
 function facturado(o){return String(o.estado||'').toUpperCase()==='FACTURADO';}
-function cityOf(o){const c=DBP.clientes.find(x=>String(x.cedula)===String(o.cliente.cedula));return (c&&c.city)||o.cliente.city||'';}
+function cityOf(o){const c=DBP.clientes.find(x=>String(x.cedula)===String(o.cliente.cedula));return o.cliente.city||(c&&c.city)||'';}
 function dirOf(o){const c=DBP.clientes.find(x=>String(x.cedula)===String(o.cliente.cedula));return o.cliente.dir||(c&&c.dir)||'';}
 function mk(o){const d=new Date(o.fecha||o.creado);return isNaN(d)?'0000-00':d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')}
 function mName(k){const[y,m]=k.split('-');return MES[parseInt(m)-1]+' '+y}
@@ -234,6 +247,7 @@ function setView(v){VIEW=v;$('#segList').classList.toggle('on',v==='list');$('#s
   $('#viewList').style.display=v==='list'?'':'none';$('#viewDash').style.display=v==='dash'?'':'none';if(v==='dash')renderDash();}
 function kpis(){const mo=monthOrders();const monto=mo.reduce((s,o)=>s+o.total,0);const cli=new Set(mo.map(o=>o.cliente.cedula)).size;
   const sub=mo.reduce((s,o)=>s+o.subtotal,0);const cajasMes=mo.reduce((s,o)=>s+orderBoxes(o),0);
+  const cobrar=mo.filter(porCobrar).reduce((s,o)=>s+o.total,0);
   const prev=CURMONTH?monthOrders(typeof prevKey==='function'?prevKey(CURMONTH):'').reduce((s,o)=>s+o.total,0):0;
   let deltaHTML='<div class="s">ICUI 20% + IVA 5%</div>';
   if(prev){const d=Math.round((monto-prev)/prev*100);deltaHTML=`<div class="d ${d>=0?'up':'down'}">${d>=0?'▲':'▼'} ${Math.abs(d)}% vs mes anterior</div>`;}
@@ -242,17 +256,20 @@ function kpis(){const mo=monthOrders();const monto=mo.reduce((s,o)=>s+o.total,0)
    <div class="kpi"><div class="l">Total con impuestos</div><div class="v">${money(monto)}</div>${deltaHTML}</div>
    <div class="kpi"><div class="l">Subtotal (base)</div><div class="v">${money(sub)}</div><div class="s">sin impuestos</div></div>
    <div class="kpi"><div class="l">Clientes atendidos</div><div class="v">${cli}</div><div class="s">únicos</div></div>
-   <div class="kpi" style="border-left-color:#5B47B0"><div class="l">📦 Cajas del mes</div><div class="v">${fmtBoxes(cajasMes)}</div><div class="s">equivalente en cajas</div></div>`;}
+   <div class="kpi" style="border-left-color:#5B47B0"><div class="l">📦 Cajas del mes</div><div class="v">${fmtBoxes(cajasMes)}</div><div class="s">equivalente en cajas</div></div>
+   <div class="kpi" style="border-left-color:#B23B2E"><div class="l">💰 Por cobrar</div><div class="v">${money(cobrar)}</div><div class="s">crédito facturado sin pagar</div></div>`;}
 function renderList(){const q=($('#q').value||'').toLowerCase().trim();let list=monthOrders();
   if(q)list=list.filter(o=>(o.folio||'').toLowerCase().includes(q)||o.cliente.nombre.toLowerCase().includes(q)||(o.cliente.cedula||'').includes(q)||o.items.some(i=>i.desc.toLowerCase().includes(q)));
   $('#monthLabel').textContent=CURMONTH?mName(CURMONTH):'—';
   $('#rows').innerHTML=list.map(o=>{const gi=ORDERS.indexOf(o);const f=new Date(o.fecha||o.creado);
     const est=facturado(o)?'<span style="color:#2E7D46;font-weight:800;white-space:nowrap">✓ Facturado</span>':'<span style="color:#b06a5c;font-weight:700;white-space:nowrap">✗ Pendiente</span>';
+    const cobrarTag=porCobrar(o)?'<div style="font-size:10px;font-weight:800;color:#B23B2E;margin-top:2px">💰 Por cobrar</div>':(facturado(o)&&estaPagado(o)?'<div style="font-size:10px;font-weight:700;color:#2E7D46;margin-top:2px">💵 Pagada</div>':'');
+    const ep=o.estadoProd&&o.estadoProd!=='PENDIENTE'?'<div style="font-size:10px;color:#8a6f5c;margin-top:2px">🏭 '+String(o.estadoProd).replace('_',' ')+'</div>':'';
     return `<tr onclick="openInvoice(${gi})"><td class="folio">${o.folio}</td>
       <td>${isNaN(f)?'—':f.toLocaleDateString('es-CO',{day:'2-digit',month:'short'})}</td>
       <td>${o.cliente.nombre}</td><td>${o.solicitante||'—'}</td><td>${o.despachador||'—'}</td>
       <td><span class="tag ${o.cliente.tier||'COMERCIAL'}">${o.cliente.tier||'—'}</span></td>
-      <td style="text-align:center">${est}</td>
+      <td style="text-align:center">${est}${cobrarTag}${ep}</td>
       <td class="tot">${money(o.total)}</td></tr>`;}).join('');
   $('#empty').style.display=list.length?'none':'block';}
 function topProd(){const mo=monthOrders();const agg={};mo.forEach(o=>o.items.forEach(it=>agg[it.desc]=(agg[it.desc]||0)+it.qty));
@@ -305,7 +322,18 @@ function renderDash(){const k=$('#dashMonth').value||CURMONTH;CURMONTH=k;renderC
   const catData={};BOX_CATS.forEach(c=>catData[c]=months.map(()=>0));
   months.forEach((mm,mi)=>{monthOrders(mm).filter(o=>passesFilt(o,'box')).forEach(o=>o.items.forEach(it=>{const cat=boxCat(grOf(it));if(catData[cat])catData[cat][mi]+=itemBoxes(it);}));});
   drawStacked('cCajas',months.map(mName),BOX_CATS,catData,cat=>toggleFilt('box',cat));
-  kpis();}
+  renderReports();kpis();}
+/* ---- Reportes de negocio: clientes inactivos y productos de baja rotación ---- */
+function renderReports(){
+  const last={};ORDERS.forEach(o=>{const d=new Date(o.fecha||o.creado);if(isNaN(d))return;const k=o.cliente.nombre;if(!last[k]||d>last[k])last[k]=d;});
+  const now=Date.now();
+  const inact=Object.keys(last).map(n=>({n,days:Math.floor((now-last[n].getTime())/86400000)}))
+    .filter(x=>x.days>30).sort((a,b)=>b.days-a.days).slice(0,20);
+  const iBox=$('#inactivos');if(iBox)iBox.innerHTML=inact.map(x=>`<div class="bar" style="justify-content:space-between"><span style="flex:1;color:var(--cacao-600);font-weight:700" title="${x.n}">${x.n.slice(0,26)}</span><span style="color:var(--danger);font-weight:800;white-space:nowrap">${x.days} d</span></div>`).join('')||'<div class="empty" style="padding:16px">Todos compraron hace poco 👍</div>';
+  const mo=monthOrders();const agg={};(DBP.productos||[]).forEach(p=>{if(p&&p.desc)agg[p.desc]=0;});
+  mo.forEach(o=>o.items.forEach(it=>{if(agg[it.desc]==null)agg[it.desc]=0;agg[it.desc]+=(+it.qty||0);}));
+  const bajos=Object.entries(agg).sort((a,b)=>a[1]-b[1]).slice(0,8);
+  const bBox=$('#bajarot');if(bBox)bBox.innerHTML=bajos.map(([n,q])=>`<div class="bar" style="justify-content:space-between"><span style="flex:1;color:var(--cacao-600);font-weight:700" title="${n}">${short(n)}</span><span style="font-weight:800;white-space:nowrap;color:${q===0?'var(--danger)':'var(--cacao-700)'}">${q} und</span></div>`).join('')||'<div class="empty" style="padding:16px">Sin datos</div>';}
 function drawBar(id,labels,data,color,onClick,horizontal){if(charts[id])charts[id].destroy();
   charts[id]=new Chart($('#'+id),{type:'bar',data:{labels,datasets:[{data,backgroundColor:color,borderRadius:6}]},
     options:{indexAxis:horizontal?'y':'x',plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+fmtMetric(c.parsed[horizontal?'x':'y'])}}},
@@ -340,9 +368,30 @@ function invoiceHTML(o){taxes(o);let sSub=0,sIc=0,sIv=0;
 function openInvoice(gi){const o=ORDERS[gi];window._inv=o;
   const facBtn=READONLY_MODE?'':(facturado(o)?`<button class="btn btn-ghost" disabled style="opacity:.6">🔒 Facturado</button>`:`<button class="btn" style="background:var(--ok);color:#fff" onclick="openFacturar(${gi})">🧾 Facturar</button>`);
   const delBtn=(!READONLY_MODE&&!facturado(o))?`<button class="btn" style="background:var(--danger);color:#fff;box-shadow:0 3px 12px rgba(178,59,46,.45)" onclick="eliminarPedidoPanel(${gi})">🗑 Eliminar pedido</button>`:'';
-  $('#modal').innerHTML=`<div class="mh"><b>Pedido · ${o.folio}</b><button class="x" onclick="closeModal()">×</button></div><div>${invoiceHTML(o)}</div>
+  $('#modal').innerHTML=`<div class="mh"><b>Pedido · ${o.folio}</b><button class="x" onclick="closeModal()">×</button></div>
+    ${controlBar(o,gi)}<div>${invoiceHTML(o)}</div>
     <div class="mfoot"><button class="btn btn-primary" onclick="window.print()">🖨 Imprimir</button>${delBtn}<button class="btn btn-ghost" onclick="dl('${o.folio}')">⬇ Descargar</button>${facBtn}</div>`;
   $('#overlay').classList.add('open');}
+/* Barra de gestión: estado de producción + cartera (crédito) */
+function controlBar(o,gi){
+  const estados=['PENDIENTE','EN_PRODUCCION','DESPACHADO'];const ep=o.estadoProd||'PENDIENTE';
+  const prodSel=READONLY_MODE?`<span style="font-size:12px;color:var(--muted)">🏭 ${ep.replace('_',' ')}</span>`
+    :`<label style="font-size:12px;font-weight:700;color:var(--cacao-600)">🏭 Producción:
+       <select onchange="cambiarEstadoProd(${gi},this.value)" style="padding:6px 8px;border:1.5px solid var(--line);border-radius:8px;margin-left:6px;font-size:13px">${estados.map(e=>`<option value="${e}" ${e===ep?'selected':''}>${e.replace('_',' ')}</option>`).join('')}</select></label>`;
+  let pagoCtl='';
+  if(facturado(o)&&esCredito(o)){const venc=dueDate(o);
+    pagoCtl=estaPagado(o)
+      ?`<span style="background:#EAF3EA;color:#2E7D46;font-weight:800;font-size:12px;padding:7px 11px;border-radius:8px">💵 Pagada${o.fechaPago?' · '+o.fechaPago:''}</span>`
+      :(READONLY_MODE?`<span style="background:#fbeee9;color:#B23B2E;font-weight:800;font-size:12px;padding:7px 11px;border-radius:8px">💰 Por cobrar${venc?' · vence '+venc:''}</span>`
+      :`<button class="tbtn" style="background:#fff;border:1.5px solid var(--ok);color:var(--ok)" onclick="marcarPagada(${gi})">💰 Marcar pagada${venc?' · vence '+venc:''}</button>`);}
+  return `<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:11px 18px;border-bottom:1px solid var(--line);background:var(--cream)">${prodSel}${pagoCtl}</div>`;}
+function cambiarEstadoProd(gi,estado){const o=ORDERS[gi];if(READONLY_MODE)return;
+  o.estadoProd=estado;LS.set('tlx_orders',ORDERS);postDrive({action:'estadoProd',folio:o.folio,estado:estado});
+  toast('Producción: '+estado.replace('_',' '));renderList();}
+function marcarPagada(gi){const o=ORDERS[gi];if(READONLY_MODE){toast('Modo solo lectura');return;}
+  if(!confirm('¿Marcar '+o.folio+' como PAGADA?'))return;
+  o.pagado='SI';o.fechaPago=new Date().toLocaleString('es-CO');LS.set('tlx_orders',ORDERS);
+  postDrive({action:'marcarPago',folio:o.folio,pagado:true});toast('Pedido marcado como pagado 💰');renderAll();openInvoice(gi);}
 /* ---- Eliminar pedido (solo facturadores · solo NO facturados · irreversible) ---- */
 function eliminarPedidoPanel(gi){var o=ORDERS[gi];if(!o)return;
   if(READONLY_MODE){toast('Modo solo lectura: no puedes eliminar');return;}
@@ -415,9 +464,12 @@ function clienteForm(gi){CLI_EDIT=gi;const c=gi==null?{}:DBP.clientes[gi];const 
     <div class="hint" style="margin-top:8px">${isEdit?'Al guardar se actualiza en TOLIMAX_clientes (busca por cédula).':'Se agrega a TOLIMAX_clientes.'}</div></div>
    <div class="mfoot"><button class="btn btn-ghost" onclick="openClientes()">Cancelar</button><button class="btn btn-primary" onclick="saveClienteForm(${isEdit})">Guardar</button></div>`;
   $('#overlay').classList.add('open');}
-function saveClienteForm(isEdit){const c={cedula:$('#f_ced').value.trim(),nombre:$('#f_nom').value.trim(),tipo:$('#f_tipo').value,
-   dir:$('#f_dir').value.trim(),pago:$('#f_pago').value,tel:$('#f_tel').value.trim(),mail:$('#f_mail').value.trim(),
-   city:$('#f_city').value.trim(),zip:$('#f_zip').value.trim(),country:'Colombia'};
+function saveClienteForm(isEdit){
+  const mail=($('#f_mail').value||'').trim();
+  if(!validEmail(mail)){toast('El correo no tiene un formato válido');$('#f_mail').focus();return}
+  const c={cedula:($('#f_ced').value||'').replace(/\s+/g,'').trim(),nombre:normSpaces($('#f_nom').value),tipo:$('#f_tipo').value,
+   dir:normSpaces($('#f_dir').value),pago:$('#f_pago').value,tel:($('#f_tel').value||'').replace(/[^\d+ ]/g,'').trim(),mail:mail,
+   city:normSpaces($('#f_city').value),zip:$('#f_zip').value.trim(),country:'Colombia'};
   if(!c.cedula||!c.nombre){toast('Cédula y nombre son obligatorios');return}
   if(isEdit&&CLI_EDIT!=null){c._match=DBP.clientes[CLI_EDIT].nombre;DBP.clientes[CLI_EDIT]={...DBP.clientes[CLI_EDIT],...c};postDrive({action:'updateCliente',cliente:c});}
   else{DBP.clientes.push(c);postDrive({action:'addCliente',cliente:c});}
@@ -449,8 +501,7 @@ function productoForm(i){PROD_EDIT=i;const p=i==null?{base:{}}:DBP.productos[i];
   $('#overlay').classList.add('open');}
 function saveProductoForm(isEdit){const desc=$('#p_desc').value.trim();if(!desc){toast('La descripción es obligatoria');return}
   const com=+$('#p_com').value||0,dis=+$('#p_dis').value||0,may=+$('#p_may').value||0,gr=+$('#p_gr').value||0;
-  const prod={desc,gramos:gr,base:{COMERCIAL:com,DISTRIBUIDOR:dis,MAYORISTA:may},
-    pvta:{COMERCIAL:Math.round(com*1.25),DISTRIBUIDOR:Math.round(dis*1.25),MAYORISTA:Math.round(may*1.25)}};
+  const prod={desc,gramos:gr,base:{COMERCIAL:com,DISTRIBUIDOR:dis,MAYORISTA:may}};   // la base ES el precio de venta
   const payload={action:'saveProducto',producto:{desc,gramos:gr,comercial:com,distribuidor:dis,mayorista:may,descOriginal:isEdit?DBP.productos[PROD_EDIT].desc:desc}};
   if(isEdit&&PROD_EDIT!=null)DBP.productos[PROD_EDIT]=prod;else DBP.productos.push(prod);
   postDrive(payload);toast('Producto guardado ✓');openProductos();}
@@ -466,7 +517,7 @@ function openAddPersonas(){$('#modal').innerHTML=`<div class="mh"><b>Añadir per
 function addPersona(action,id){const v=$('#'+id).value.trim();if(!v){toast('Escribe un nombre');return}
   postDrive({action,nombre:v});if(action==='addFacturador'&&FACTURADORES.indexOf(v)<0)FACTURADORES.push(v);$('#'+id).value='';toast('Guardado en Drive ✓');}
 function postDrive(payload){if(READONLY_MODE){toast('Modo solo lectura: acción no permitida');return}const u=syncUrl();if(!u){toast('Conecta Drive primero (⚙ en la app)');return}
-  try{fetch(u,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)}).catch(()=>{});}catch(e){}}
+  try{fetch(u,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(Object.assign({token:TLX_TOKEN},payload))}).catch(()=>{});}catch(e){}}
 
 /* ---- Import / Drive / Export ---- */
 function importFile(ev){const f=ev.target.files[0];if(!f)return;const r=new FileReader();
@@ -485,12 +536,12 @@ function loadFromDrive(){const u=syncUrl()||prompt('Pega la URL del script de Dr
   fetch(u+(u.indexOf('?')>=0?'&':'?')+'t='+Date.now(),{cache:'no-store'}).then(r=>r.json()).then(d=>{if(!Array.isArray(d))throw 0;ORDERS=d;DEMO=false;$('#demoBanner').style.display='none';ORDERS.forEach(taxes);LS.set('tlx_orders',d);CURMONTH=null;
     ORDERS.sort((a,b)=>new Date(b.fecha||b.creado)-new Date(a.fecha||a.creado));buildMonths();loadCatalogPanel();fin();toast(d.length+' pedidos actualizados ✓');}).catch(e=>{fin();toast('No se pudo actualizar. Revisa URL/permisos.');});}
 function exportMonth(){const mo=monthOrders();if(!mo.length){toast('Nada que exportar');return}
-  const head=['Folio','Fecha','Solicitante','Despachador','Cedula','Cliente','Ciudad','Lista','Producto','Obs','Cantidad','Gramaje','Und x Caja','Cajas','V.Unit','Subtotal','ICUI 20%','IVA 5%','Total','Estado','Facturador'];
+  const head=['Folio','Fecha','Solicitante','Despachador','Cedula','Cliente','Ciudad','Lista','Producto','Obs','Cantidad','Gramaje','Und x Caja','Cajas','V.Unit','Subtotal','ICUI 20%','IVA 5%','Total','Estado','Facturador','Produccion','Pagado','Vence'];
   const rows=[head.join(';')];const catTot={};let grand=0;
   mo.forEach(o=>o.items.forEach(it=>{const sub=Math.round(it.total),ic=Math.round(sub*ICUI),iv=Math.round(sub*IVA);
     const g=grOf(it),upb=upbFor(g),cat=boxCat(g),cajas=upb?((+it.qty||0)/upb):0;
     if(upb){catTot[cat]=(catTot[cat]||0)+cajas;grand+=cajas;}
-    rows.push([o.folio,o.fecha,o.solicitante||'',o.despachador||'','"'+o.cliente.cedula+'"','"'+o.cliente.nombre+'"','"'+cityOf(o)+'"',o.cliente.tier,'"'+it.desc+'"','"'+(it.obs||'')+'"',it.qty,cat,upb||'',(upb?cajas.toFixed(2).replace('.',','):''),it.unit,sub,ic,iv,sub+ic+iv,o.estado||'PENDIENTE','"'+(o.facturador||'')+'"'].join(';'));}));
+    rows.push([o.folio,o.fecha,o.solicitante||'',o.despachador||'','"'+o.cliente.cedula+'"','"'+o.cliente.nombre+'"','"'+cityOf(o)+'"',o.cliente.tier,'"'+it.desc+'"','"'+(it.obs||'')+'"',it.qty,cat,upb||'',(upb?cajas.toFixed(2).replace('.',','):''),it.unit,sub,ic,iv,sub+ic+iv,o.estado||'PENDIENTE','"'+(o.facturador||'')+'"',o.estadoProd||'PENDIENTE',(esCredito(o)?(estaPagado(o)?'SI':'NO'):''),(esCredito(o)?dueDate(o):'')].join(';'));}));
   rows.push('');rows.push('RESUMEN DE CAJAS;'+mName(CURMONTH));
   BOX_CATS.forEach(c=>{if(catTot[c])rows.push('Cajas '+c+';'+catTot[c].toFixed(2).replace('.',','));});
   rows.push('TOTAL CAJAS;'+grand.toFixed(2).replace('.',','));
